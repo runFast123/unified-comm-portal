@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Clock, MessageCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Clock, MessageCircle, AlertCircle, Loader2, Mail } from 'lucide-react'
 import { ChannelIcon } from '@/components/ui/channel-icon'
 import { PhaseIndicator } from '@/components/ui/phase-indicator'
 import { Badge } from '@/components/ui/badge'
@@ -189,6 +189,14 @@ export default function AccountsPage() {
                 className="text-xs"
               />
             </div>
+
+            {/* Monitoring email */}
+            {account.gmail_address && (
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-teal-600 truncate">
+                <Mail size={12} className="shrink-0" />
+                <span className="truncate">{account.gmail_address}</span>
+              </div>
+            )}
 
             {/* Message stats */}
             <div className="mt-4 flex items-center gap-4">
