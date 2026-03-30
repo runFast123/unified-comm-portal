@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export type DateRange = 'today' | '7d' | '30d' | '90d' | 'custom'
+export type DateRange = 'today' | 'yesterday' | '7d' | '30d' | '90d' | 'custom'
 
 interface DateRangePickerProps {
   activeRange: DateRange
@@ -16,6 +16,7 @@ interface DateRangePickerProps {
 
 const presets: { label: string; value: DateRange }[] = [
   { label: 'Today', value: 'today' },
+  { label: 'Yesterday', value: 'yesterday' },
   { label: '7 Days', value: '7d' },
   { label: '30 Days', value: '30d' },
   { label: '90 Days', value: '90d' },

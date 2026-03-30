@@ -112,6 +112,10 @@ export function AccountDetailClient({ account }: { account: Account }) {
         const d = new Date(now.getFullYear(), now.getMonth(), now.getDate())
         return d.toISOString()
       }
+      case 'yesterday': {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+        return d.toISOString()
+      }
       case '7d': {
         const d = new Date(now)
         d.setDate(d.getDate() - 7)
