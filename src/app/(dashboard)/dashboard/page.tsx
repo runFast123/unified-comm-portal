@@ -28,6 +28,7 @@ import { KPICard } from '@/components/dashboard/kpi-card'
 import { ChannelFilter, type ChannelFilterValue } from '@/components/dashboard/channel-filter'
 import { AccountsTable } from '@/components/dashboard/accounts-table'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { CompanyStatsTable, type CompanyPerformance } from '@/components/dashboard/company-stats-table'
 import { createClient } from '@/lib/supabase-client'
 import { formatResponseTime, getChannelLabel, getChannelBgColor } from '@/lib/utils'
 import type { DashboardKPIs } from '@/types/database'
@@ -147,6 +148,7 @@ export default function DashboardPage() {
     breachedCount: 0,
   })
   const [spamFilteredToday, setSpamFilteredToday] = useState(0)
+  const [companyStats, setCompanyStats] = useState<CompanyPerformance[]>([])
 
   // Load account filter from localStorage after mount (avoids hydration mismatch)
   useEffect(() => {
@@ -215,7 +217,7 @@ export default function DashboardPage() {
 
         let accountsQuery = supabase
           .from('accounts')
-          .select('id, name, channel_type, phase1_enabled, phase2_enabled')
+          .select('id, name, channel_type, gmail_address, phase1_enabled, phase2_enabled')
           .eq('is_active', true)
           .order('name')
         if (accountIdFilter) accountsQuery = accountsQuery.eq('id', accountIdFilter)
@@ -376,8 +378,9 @@ export default function DashboardPage() {
 
         // --- Process accounts (data already fetched in parallel) ---
         let processedAccounts: AccountOverview[] = []
+        const pendingByAccount: Record<string, number> = {}
+        const lastMsgByAccount: Record<string, string> = {}
         if (accountsResult.data) {
-          const pendingByAccount: Record<string, number> = {}
           if (pendingByAccountResult.data) {
             for (const row of pendingByAccountResult.data) {
               const aid = (row as { account_id: string }).account_id
@@ -385,7 +388,6 @@ export default function DashboardPage() {
             }
           }
 
-          const lastMsgByAccount: Record<string, string> = {}
           if (lastMsgResult.data) {
             for (const row of lastMsgResult.data) {
               const r = row as { account_id: string; received_at: string }
@@ -483,6 +485,69 @@ export default function DashboardPage() {
           setSpamFilteredToday(spamTotal ?? 0)
         } catch (spamErr) {
           console.error('Failed to fetch spam stats:', spamErr)
+        }
+
+        // --- Per-account company performance stats ---
+        try {
+          const companyPerf: CompanyPerformance[] = await Promise.all(
+            (accountsResult.data || []).map(async (acc: { id: string; name: string; channel_type: string; gmail_address: string | null }) => {
+              const [totalRes, pendingRes, aiSentRes, classRes] = await Promise.all([
+                supabase
+                  .from('messages')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('account_id', acc.id)
+                  .eq('direction', 'inbound')
+                  .gte('received_at', rangeISO),
+                supabase
+                  .from('messages')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('account_id', acc.id)
+                  .eq('direction', 'inbound')
+                  .eq('reply_required', true)
+                  .eq('replied', false)
+                  .gte('received_at', rangeISO),
+                supabase
+                  .from('ai_replies')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('account_id', acc.id)
+                  .eq('status', 'sent')
+                  .gte('created_at', rangeISO),
+                supabase
+                  .from('message_classifications')
+                  .select('category, messages!inner(account_id)')
+                  .eq('messages.account_id', acc.id)
+                  .gte('classified_at', rangeISO)
+                  .limit(200),
+              ])
+
+              const total = totalRes.count || 0
+              const pending = pendingRes.count || 0
+              const aiSent = aiSentRes.count || 0
+
+              // Compute top category
+              const catCounts: Record<string, number> = {}
+              ;(classRes.data || []).forEach((c: { category: string }) => {
+                catCounts[c.category] = (catCounts[c.category] || 0) + 1
+              })
+              const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]
+
+              return {
+                id: acc.id,
+                name: acc.name,
+                channel_type: acc.channel_type as ChannelType,
+                gmail_address: acc.gmail_address,
+                totalMessages: total,
+                pendingReplies: pending,
+                aiRepliesSent: aiSent,
+                responseRate: total > 0 ? Math.round((aiSent / total) * 100) : 0,
+                topCategory: topCat ? topCat[0] : null,
+                lastActivity: lastMsgByAccount[acc.id] || null,
+              }
+            })
+          )
+          setCompanyStats(companyPerf)
+        } catch (err) {
+          console.error('Failed to fetch company stats:', err)
         }
 
         setKpis(processedKpis)
@@ -987,6 +1052,21 @@ export default function DashboardPage() {
         ) : (
           <AccountsTable accounts={filteredAccounts} filter={channelFilter} />
         )}
+      </Card>
+
+      {/* Company Performance */}
+      <Card
+        title="Company Performance"
+        description={`Per-account metrics for the selected period`}
+        className="animate-slide-up stagger-5"
+      >
+        <CompanyStatsTable
+          stats={companyStats.filter(s => {
+            if (selectedAccountIds.size > 0 && !selectedAccountIds.has(s.id)) return false
+            if (channelFilter !== 'all' && s.channel_type !== channelFilter) return false
+            return true
+          })}
+        />
       </Card>
     </div>
   )
