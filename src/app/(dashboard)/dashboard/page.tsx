@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   MessageCircle,
   Clock,
@@ -149,6 +150,79 @@ export default function DashboardPage() {
   })
   const [spamFilteredToday, setSpamFilteredToday] = useState(0)
   const [companyStats, setCompanyStats] = useState<CompanyPerformance[]>([])
+
+  // Drill-down state for clickable KPI cards
+  type DashDrillDown = 'total' | 'pending' | 'ai_processed' | 'sla_breached' | 'spam' | null
+  interface DashDrillMsg {
+    id: string
+    sender_name: string | null
+    email_subject: string | null
+    message_text: string | null
+    received_at: string
+    replied: boolean
+    is_spam: boolean
+    conversation_id: string
+    account_name?: string
+  }
+  const [dashDrill, setDashDrill] = useState<DashDrillDown>(null)
+  const [dashDrillMsgs, setDashDrillMsgs] = useState<DashDrillMsg[]>([])
+  const [dashDrillLoading, setDashDrillLoading] = useState(false)
+
+  const handleDashKpiClick = useCallback(async (type: DashDrillDown) => {
+    if (dashDrill === type) { setDashDrill(null); setDashDrillMsgs([]); return }
+    setDashDrill(type)
+    setDashDrillLoading(true)
+    const supabase = createClient()
+    const startDate = getDateRangeStart(dateRange)
+
+    let query = supabase
+      .from('messages')
+      .select('id, sender_name, email_subject, message_text, received_at, replied, is_spam, conversation_id, accounts!messages_account_id_fkey(name)')
+      .eq('direction', 'inbound')
+      .order('received_at', { ascending: false })
+      .limit(50)
+
+    if (startDate) query = query.gte('received_at', startDate)
+
+    // Apply account filter if selected
+    if (selectedAccountIds.size > 0) {
+      query = query.in('account_id', Array.from(selectedAccountIds))
+    }
+
+    switch (type) {
+      case 'total': query = query.eq('is_spam', false); break
+      case 'pending': query = query.eq('reply_required', true).eq('replied', false).eq('is_spam', false); break
+      case 'spam': query = query.eq('is_spam', true); break
+      case 'sla_breached': query = query.eq('reply_required', true).eq('replied', false).eq('is_spam', false); break
+      case 'ai_processed': break // show all for now
+    }
+
+    const { data } = await query
+    const mapped: DashDrillMsg[] = (data || []).map((m: Record<string, unknown>) => {
+      const acc = m.accounts as Record<string, unknown> | null
+      return {
+        id: m.id as string,
+        sender_name: m.sender_name as string | null,
+        email_subject: m.email_subject as string | null,
+        message_text: m.message_text as string | null,
+        received_at: m.received_at as string,
+        replied: m.replied as boolean,
+        is_spam: m.is_spam as boolean,
+        conversation_id: m.conversation_id as string,
+        account_name: (acc?.name as string) || undefined,
+      }
+    })
+    setDashDrillMsgs(mapped)
+    setDashDrillLoading(false)
+  }, [dashDrill, dateRange, selectedAccountIds])
+
+  const dashDrillTitle: Record<string, string> = {
+    total: 'All Messages',
+    pending: 'Pending Replies',
+    ai_processed: 'AI Processed',
+    sla_breached: 'SLA Breached',
+    spam: 'Spam Messages',
+  }
 
   // Load account filter from localStorage after mount (avoids hydration mismatch)
   useEffect(() => {
@@ -765,7 +839,7 @@ export default function DashboardPage() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 [&>div]:min-w-0">
-        <div onClick={() => router.push('/inbox')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-blue-100 p-5 shadow-sm transition-shadow hover:shadow-lg">
+        <div onClick={() => handleDashKpiClick('total')} className={`cursor-pointer relative rounded-xl border bg-gradient-to-br from-blue-50 to-blue-100 p-5 shadow-sm transition-all hover:shadow-lg ${dashDrill === 'total' ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-200'}`}>
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-blue-600" />
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
@@ -782,7 +856,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div onClick={() => router.push('/inbox?filter=pending')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-gradient-to-br from-amber-50 to-amber-100 p-5 shadow-sm transition-shadow hover:shadow-lg">
+        <div onClick={() => handleDashKpiClick('pending')} className={`cursor-pointer relative rounded-xl border bg-gradient-to-br from-amber-50 to-amber-100 p-5 shadow-sm transition-all hover:shadow-lg ${dashDrill === 'pending' ? 'border-amber-500 ring-2 ring-amber-100' : 'border-gray-200'}`}>
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-amber-500" />
           {filteredKpis.pendingReplies > 10 && (
             <span className="absolute -right-1 -top-1 flex h-3 w-3">
@@ -802,7 +876,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div onClick={() => router.push('/inbox?filter=ai_processed')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-gradient-to-br from-teal-50 to-teal-100 p-5 shadow-sm transition-shadow hover:shadow-lg">
+        <div onClick={() => handleDashKpiClick('ai_processed')} className={`cursor-pointer relative rounded-xl border bg-gradient-to-br from-teal-50 to-teal-100 p-5 shadow-sm transition-all hover:shadow-lg ${dashDrill === 'ai_processed' ? 'border-teal-500 ring-2 ring-teal-100' : 'border-gray-200'}`}>
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-teal-600" />
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
@@ -819,7 +893,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div onClick={() => router.push('/reports')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-gradient-to-br from-green-50 to-green-100 p-5 shadow-sm transition-shadow hover:shadow-lg">
+        <div className="relative rounded-xl border border-gray-200 bg-gradient-to-br from-green-50 to-green-100 p-5 shadow-sm">
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-green-600" />
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
@@ -838,7 +912,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Sentiment gauge card */}
-        <div onClick={() => router.push('/inbox?sentiment=positive')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-lg transition-shadow">
+        <div className="relative rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-emerald-500" />
           <div className="flex items-start justify-between">
             <p className="text-sm font-medium text-gray-500">Sentiment Score</p>
@@ -876,7 +950,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div onClick={() => router.push(`/inbox?category=${encodeURIComponent(filteredKpis.topCategory.name)}`)} className="cursor-pointer">
+        <div className="">
           <KPICard
             title="Top Issue Category"
             value={filteredKpis.topCategory.name}
@@ -890,7 +964,7 @@ export default function DashboardPage() {
 
       {/* SLA Performance + Spam */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div onClick={() => router.push('/reports')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-gradient-to-br from-indigo-50 to-indigo-100 p-5 shadow-sm transition-shadow hover:shadow-lg">
+        <div className="relative rounded-xl border border-gray-200 bg-gradient-to-br from-indigo-50 to-indigo-100 p-5 shadow-sm">
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-indigo-600" />
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
@@ -910,7 +984,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div onClick={() => router.push('/reports')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-gradient-to-br from-emerald-50 to-emerald-100 p-5 shadow-sm transition-shadow hover:shadow-lg">
+        <div className="relative rounded-xl border border-gray-200 bg-gradient-to-br from-emerald-50 to-emerald-100 p-5 shadow-sm">
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-emerald-600" />
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
@@ -926,7 +1000,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div onClick={() => router.push('/inbox?filter=sla_breached')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-gradient-to-br from-red-50 to-red-100 p-5 shadow-sm transition-shadow hover:shadow-lg">
+        <div onClick={() => handleDashKpiClick('sla_breached')} className={`cursor-pointer relative rounded-xl border bg-gradient-to-br from-red-50 to-red-100 p-5 shadow-sm transition-all hover:shadow-lg ${dashDrill === 'sla_breached' ? 'border-red-500 ring-2 ring-red-100' : 'border-gray-200'}`}>
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-red-500" />
           {slaStats.breachedCount > 0 && (
             <span className="absolute -right-1 -top-1 flex h-3 w-3">
@@ -946,7 +1020,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div onClick={() => router.push('/inbox?spam=true')} className="cursor-pointer relative rounded-xl border border-gray-200 bg-gradient-to-br from-orange-50 to-orange-100 p-5 shadow-sm transition-shadow hover:shadow-lg">
+        <div onClick={() => handleDashKpiClick('spam')} className={`cursor-pointer relative rounded-xl border bg-gradient-to-br from-orange-50 to-orange-100 p-5 shadow-sm transition-all hover:shadow-lg ${dashDrill === 'spam' ? 'border-orange-500 ring-2 ring-orange-100' : 'border-gray-200'}`}>
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-orange-500" />
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1">
@@ -961,6 +1035,76 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* KPI Drill-down Panel */}
+      {dashDrill && (
+        <Card className="animate-slide-up">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-900">
+              {dashDrillTitle[dashDrill]} ({dashDrillMsgs.length}{dashDrillMsgs.length >= 50 ? '+' : ''})
+            </h3>
+            <button
+              onClick={() => { setDashDrill(null); setDashDrillMsgs([]) }}
+              className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {dashDrillLoading ? (
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex gap-3 animate-pulse">
+                  <div className="h-8 w-8 rounded-full bg-gray-200 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-40 bg-gray-200 rounded" />
+                    <div className="h-3 w-64 bg-gray-200 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : dashDrillMsgs.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">No messages found for this filter.</p>
+          ) : (
+            <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
+              {dashDrillMsgs.map((msg) => (
+                <Link
+                  key={msg.id}
+                  href={msg.conversation_id ? `/conversations/${msg.conversation_id}` : '#'}
+                  className="flex items-start gap-3 py-3 hover:bg-gray-50 -mx-6 px-6 transition-colors"
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 shrink-0 mt-0.5">
+                    <Mail size={14} className="text-gray-500" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {msg.sender_name || 'Unknown sender'}
+                      </span>
+                      <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
+                        {new Date(msg.received_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    {msg.email_subject && (
+                      <p className="text-xs font-medium text-gray-600 truncate">{msg.email_subject}</p>
+                    )}
+                    <p className="text-xs text-gray-400 truncate mt-0.5">
+                      {msg.message_text?.slice(0, 100) || 'No content'}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      {msg.account_name && (
+                        <Badge variant="info" size="sm">{msg.account_name}</Badge>
+                      )}
+                      {msg.is_spam && <Badge variant="danger" size="sm">Spam</Badge>}
+                      {!msg.replied && !msg.is_spam && <Badge variant="warning" size="sm">Pending</Badge>}
+                      {msg.replied && <Badge variant="success" size="sm">Replied</Badge>}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Channel Breakdown + Category Breakdown */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 animate-slide-up stagger-2 [&>*]:min-w-0">
         {/* Channel Breakdown */}
@@ -969,7 +1113,7 @@ export default function DashboardPage() {
             {filteredChannelStats.map((stat) => (
               <div
                 key={stat.channel}
-                onClick={() => router.push(`/inbox?channel=${stat.channel}`)}
+                onClick={() => setChannelFilter(stat.channel as ChannelFilterValue)}
                 className="cursor-pointer rounded-lg border border-gray-100 p-4 text-center hover:shadow-md transition-shadow"
               >
                 <div className="flex items-center justify-center gap-2">
@@ -1006,7 +1150,7 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-3">
               {categories.map((cat) => (
-                <div key={cat.category} onClick={() => router.push(`/inbox?category=${encodeURIComponent(cat.category)}`)} className="cursor-pointer flex items-center gap-3 rounded px-1 hover:bg-gray-50 transition-colors">
+                <div key={cat.category} className="flex items-center gap-3 rounded px-1 hover:bg-gray-50 transition-colors">
                   <span className="w-24 sm:w-32 flex-shrink-0 truncate text-sm text-gray-700">
                     {cat.category}
                   </span>
