@@ -245,6 +245,16 @@ export default async function AccountDetailPage({
                   phase2_enabled={account.phase2_enabled}
                 />
               </div>
+              {account.gmail_address && (
+                <p className="mt-1 text-sm text-teal-600">
+                  Monitoring &amp; replying via: {account.gmail_address}
+                </p>
+              )}
+              {account.whatsapp_phone && (
+                <p className="mt-1 text-sm text-green-600">
+                  WhatsApp: {account.whatsapp_phone}
+                </p>
+              )}
             </div>
           </div>
 

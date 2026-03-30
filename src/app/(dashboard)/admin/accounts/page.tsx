@@ -418,6 +418,7 @@ export default function AccountsPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Channel</TableHead>
                 <TableHead>Account Name</TableHead>
+                <TableHead>Email</TableHead>
                 <TableHead>Monitor (Phase 1)</TableHead>
                 <TableHead>AI Reply (Phase 2)</TableHead>
                 <TableHead>Phase Status</TableHead>
@@ -455,6 +456,11 @@ export default function AccountsPage() {
                   </TableCell>
                   <TableCell>
                     <span className="font-medium text-gray-900">{account.name}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-gray-500 truncate max-w-[180px] block" title={account.gmail_address || ''}>
+                      {account.gmail_address || <span className="text-gray-300 italic">Not set</span>}
+                    </span>
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Toggle
@@ -504,6 +510,11 @@ export default function AccountsPage() {
                 <p className="text-sm text-gray-500">
                   {getChannelLabel(detailAccount.channel_type)} Account
                 </p>
+                {detailAccount.gmail_address && (
+                  <p className="text-xs text-teal-600 mt-0.5">
+                    📧 {detailAccount.gmail_address}
+                  </p>
+                )}
               </div>
             </div>
 
