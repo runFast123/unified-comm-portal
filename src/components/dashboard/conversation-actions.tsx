@@ -311,10 +311,28 @@ export function ConversationActions({
       })
 
       if (res.ok) {
+        const now = new Date().toISOString()
         await supabase
           .from('ai_replies')
-          .update({ status: 'sent', sent_at: new Date().toISOString() })
+          .update({ status: 'sent', sent_at: now })
           .eq('id', aiReplyId)
+
+        // Create outbound message record so it shows in the conversation thread
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          account_id: accountId,
+          channel: channel,
+          sender_name: accountName,
+          sender_type: 'ai',
+          message_text: aiDraftText,
+          direction: 'outbound',
+          email_subject: emailSubject ? `Re: ${emailSubject}` : null,
+          replied: true,
+          reply_required: false,
+          timestamp: now,
+          received_at: now,
+        })
+
         toast.success('AI reply approved and sent!')
       } else {
         toast.warning('Reply approved but sending failed. You can retry from the inbox.')
@@ -325,7 +343,7 @@ export function ConversationActions({
     } finally {
       setLoading(null)
     }
-  }, [aiReplyId, accountId, aiDraftText, conversationId, participantEmail, router, toast, channel, emailSubject])
+  }, [aiReplyId, accountId, accountName, aiDraftText, conversationId, participantEmail, router, toast, channel, emailSubject])
 
   const handleEditSend = useCallback(async () => {
     if (!participantEmail) {
@@ -374,6 +392,23 @@ export function ConversationActions({
       })
 
       if (res.ok) {
+        // Create outbound message record so it shows in the conversation thread
+        const now = new Date().toISOString()
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          account_id: accountId,
+          channel: channel,
+          sender_name: accountName,
+          sender_type: 'agent',
+          message_text: editText,
+          direction: 'outbound',
+          email_subject: emailSubject ? `Re: ${emailSubject}` : null,
+          replied: true,
+          reply_required: false,
+          timestamp: now,
+          received_at: now,
+        })
+
         toast.success('Reply sent successfully!')
       } else {
         toast.error('Failed to send reply.')
@@ -385,7 +420,7 @@ export function ConversationActions({
     } finally {
       setLoading(null)
     }
-  }, [editText, aiReplyId, accountId, participantEmail, conversationId, router, toast, channel, emailSubject])
+  }, [editText, aiReplyId, accountId, accountName, participantEmail, conversationId, router, toast, channel, emailSubject])
 
   const handleManualReply = useCallback(async () => {
     if (!participantEmail) {
