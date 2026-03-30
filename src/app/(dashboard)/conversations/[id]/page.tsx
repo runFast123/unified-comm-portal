@@ -71,7 +71,7 @@ export default async function ConversationPage({
       users!conversations_assigned_to_fkey ( id, full_name, email )
     `)
     .eq('id', id)
-    .single()
+    .maybeSingle()
 
   if (convError || !conversation) {
     notFound()

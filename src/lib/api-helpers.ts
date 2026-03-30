@@ -110,7 +110,7 @@ export async function findOrCreateConversation(
       channel: params.channel,
       teams_chat_id: params.teams_chat_id || null,
       participant_name: params.participant_name || null,
-      participant_email: params.participant_email || params.participant_phone || null,
+      participant_email: params.participant_email || null,
       status: 'active',
       priority: 'medium',
       tags: [],

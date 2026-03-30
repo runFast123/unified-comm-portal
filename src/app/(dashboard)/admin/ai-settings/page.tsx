@@ -85,7 +85,7 @@ export default function AISettingsPage() {
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
 
       if (aiConfig) {
         setProviderName(aiConfig.provider_name || 'NVIDIA')

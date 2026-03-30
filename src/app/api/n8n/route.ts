@@ -196,9 +196,10 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(30000), // 30s timeout to prevent hanging
     })
 
+    const responseText = await n8nResponse.text()
+
     if (!n8nResponse.ok) {
-      const errorBody = await n8nResponse.text()
-      console.error(`n8n webhook error (${n8nResponse.status}):`, errorBody)
+      console.error(`n8n webhook error (${n8nResponse.status}):`, responseText)
       return NextResponse.json(
         { error: `n8n workflow trigger failed: ${n8nResponse.status}` },
         { status: 502 }
@@ -207,7 +208,6 @@ export async function POST(request: Request) {
 
     let n8nResult: Record<string, unknown> = {}
     try {
-      const responseText = await n8nResponse.text()
       n8nResult = responseText ? JSON.parse(responseText) : {}
     } catch (parseError) {
       console.error('Failed to parse n8n webhook response as JSON:', parseError)

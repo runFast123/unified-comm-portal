@@ -69,7 +69,15 @@ export async function POST(request: Request) {
       )
     }
 
-    const data = await response.json()
+    let data
+    try {
+      data = await response.json()
+    } catch {
+      return NextResponse.json(
+        { error: 'AI API returned non-JSON response' },
+        { status: 502 }
+      )
+    }
     const reply = data.choices?.[0]?.message?.content || 'No response content'
 
     return NextResponse.json({ message: reply }, { status: 200 })

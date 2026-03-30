@@ -83,8 +83,11 @@ export async function POST(request: Request) {
     // Fetch account settings
     const account = await getAccountSettings(supabase, account_id)
 
-    // Build system prompt: admin's custom prompt takes priority, falls back to channel default
-    const channelKey = (channel as ChannelType) || 'email'
+    // Validate channel against allowed values
+    const validChannels: ChannelType[] = ['email', 'teams', 'whatsapp']
+    const channelKey: ChannelType = validChannels.includes(channel as ChannelType)
+      ? (channel as ChannelType)
+      : 'email'
     let systemPrompt: string
 
     if (account.ai_system_prompt && account.ai_system_prompt.trim().length > 0) {
