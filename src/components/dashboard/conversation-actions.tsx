@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CheckCircle,
+  CheckCheck,
   Pencil,
   MessageSquare,
   AlertTriangle,
@@ -14,6 +15,7 @@ import {
   FileText,
   ChevronDown,
   Search,
+  Info,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -486,6 +488,34 @@ export function ConversationActions({
     }
   }, [manualText, conversationId, accountId, channel, accountName, participantEmail, router, toast, emailSubject])
 
+  const handleMarkReplied = useCallback(async () => {
+    setLoading('mark_replied')
+    try {
+      const supabase = createClient()
+      // Mark all unreplied inbound messages in this conversation as replied
+      const { error } = await supabase
+        .from('messages')
+        .update({ replied: true, reply_required: false })
+        .eq('conversation_id', conversationId)
+        .eq('direction', 'inbound')
+        .eq('replied', false)
+      if (error) throw error
+
+      // Update conversation status to resolved
+      await supabase
+        .from('conversations')
+        .update({ status: 'resolved' })
+        .eq('id', conversationId)
+
+      toast.success('Marked as replied (replied outside portal)')
+      router.refresh()
+    } catch (err: any) {
+      toast.error('Failed: ' + err.message)
+    } finally {
+      setLoading(null)
+    }
+  }, [conversationId, router, toast])
+
   const handleEscalate = useCallback(async () => {
     setLoading('escalate')
     try {
@@ -524,6 +554,14 @@ export function ConversationActions({
 
   return (
     <div className="sticky bottom-0 bg-white border-t border-gray-200 py-3 px-4 z-10 space-y-3">
+      {/* Warning banner */}
+      <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+        <Info size={14} className="shrink-0 mt-0.5" />
+        <span>
+          Replied from Gmail directly? Click <strong>&quot;Mark as Replied&quot;</strong> to sync the status here.
+        </span>
+      </div>
+
       {/* Reply compose areas */}
       {showManualReply && (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
@@ -722,6 +760,16 @@ export function ConversationActions({
             </div>
           )}
         </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="bg-green-50 text-green-700 hover:bg-green-100 border border-green-200"
+          onClick={handleMarkReplied}
+          disabled={loading === 'mark_replied'}
+        >
+          {loading === 'mark_replied' ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />}
+          Mark as Replied
+        </Button>
         <div className="mx-2 h-6 w-px bg-gray-200" />
         <Button
           size="sm"

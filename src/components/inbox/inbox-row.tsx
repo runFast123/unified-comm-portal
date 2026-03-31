@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Archive, AlertTriangle } from 'lucide-react'
+import { Archive, AlertTriangle, CheckCheck } from 'lucide-react'
 import { ChannelIcon } from '@/components/ui/channel-icon'
 import { Badge } from '@/components/ui/badge'
 import { SLABadge } from '@/components/inbox/sla-badge'
@@ -174,6 +174,16 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
     if (error) console.error('Failed to escalate message:', error)
   }
 
+  const handleMarkReplied = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('messages')
+      .update({ replied: true, reply_required: false })
+      .eq('id', item.message_id)
+    if (error) console.error('Failed to mark as replied:', error)
+  }
+
   const priorityColorClass = getPriorityColor(item.priority)
   const rawSender = item.sender_name || 'Unknown'
   const senderName = cleanSenderName(rawSender)
@@ -277,6 +287,13 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
 
       {/* Quick action buttons on hover */}
       <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg px-1 py-0.5 shadow-md border border-gray-200">
+        <button
+          onClick={handleMarkReplied}
+          className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+          title="Mark as Replied (replied outside portal)"
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+        </button>
         <button
           onClick={handleArchive}
           className="p-1.5 rounded-md text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"

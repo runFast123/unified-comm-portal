@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { CheckSquare, Archive, UserPlus, Loader2, Inbox, List, Columns, X, Sparkles, User, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { CheckSquare, CheckCheck, Archive, UserPlus, Loader2, Inbox, List, Columns, X, Sparkles, User, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InboxList } from '@/components/inbox/inbox-list'
 import { InboxFiltersBar, type InboxFilters } from '@/components/inbox/inbox-filters'
@@ -106,7 +106,7 @@ export default function InboxPage() {
   const [selectedItem, setSelectedItem] = useState<InboxItem | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'approve' | 'archive' | 'smart-approve'
+    type: 'approve' | 'archive' | 'smart-approve' | 'mark_replied'
     count: number
     totalCount?: number
   } | null>(null)
@@ -546,6 +546,23 @@ export default function InboxPage() {
             variant="secondary"
             size="sm"
             onClick={() => {
+              const messageIds = selectedIds.size > 0
+                ? filteredItems.filter((item) => selectedIds.has(item.id)).map((item) => item.message_id)
+                : filteredItems.filter((item) => item.ai_status !== 'auto_sent').map((item) => item.message_id)
+              if (messageIds.length === 0) {
+                toast.warning('No pending messages to mark.')
+                return
+              }
+              setConfirmAction({ type: 'mark_replied', count: messageIds.length })
+            }}
+          >
+            <CheckCheck className="h-4 w-4" />
+            Mark Replied
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
               const messageIds = filteredItems.map((item) => item.message_id)
               if (messageIds.length === 0) {
                 toast.warning('No messages to archive.')
@@ -572,6 +589,8 @@ export default function InboxPage() {
                 `Are you sure you want to approve ${confirmAction.count} selected message${confirmAction.count > 1 ? 's' : ''}?`}
               {confirmAction.type === 'archive' &&
                 `Are you sure you want to archive ${confirmAction.count} message${confirmAction.count > 1 ? 's' : ''}? This cannot be undone.`}
+              {confirmAction.type === 'mark_replied' &&
+                `Mark ${confirmAction.count} message${confirmAction.count > 1 ? 's' : ''} as replied? Use this if you replied from Gmail directly.`}
             </p>
             <div className="mt-5 flex justify-end gap-3">
               <Button
@@ -583,7 +602,7 @@ export default function InboxPage() {
                 Cancel
               </Button>
               <Button
-                variant={confirmAction.type === 'archive' ? 'danger' : 'primary'}
+                variant={confirmAction.type === 'archive' ? 'danger' : confirmAction.type === 'mark_replied' ? 'success' : 'primary'}
                 size="sm"
                 loading={bulkActionLoading}
                 onClick={async () => {
@@ -626,6 +645,23 @@ export default function InboxPage() {
                           fetchInboxItems()
                         }
                       }
+                    } else if (confirmAction.type === 'mark_replied') {
+                      const messageIds = selectedIds.size > 0
+                        ? filteredItems.filter((item) => selectedIds.has(item.id)).map((item) => item.message_id)
+                        : filteredItems.filter((item) => item.ai_status !== 'auto_sent').map((item) => item.message_id)
+                      const { error: err } = await supabase
+                        .from('messages')
+                        .update({ replied: true, reply_required: false })
+                        .in('id', messageIds)
+                      if (err) {
+                        toast.error('Failed to mark as replied: ' + err.message)
+                      } else {
+                        setItems((prev) =>
+                          prev.filter((item) => !messageIds.includes(item.message_id))
+                        )
+                        toast.success(`Marked ${messageIds.length} message(s) as replied.`)
+                        clearSelection()
+                      }
                     } else if (confirmAction.type === 'archive') {
                       const messageIds = selectedIds.size > 0
                         ? filteredItems.filter((item) => selectedIds.has(item.id)).map((item) => item.message_id)
@@ -658,7 +694,7 @@ export default function InboxPage() {
                   }
                 }}
               >
-                {confirmAction.type === 'archive' ? 'Archive' : 'Approve'}
+                {confirmAction.type === 'archive' ? 'Archive' : confirmAction.type === 'mark_replied' ? 'Mark Replied' : 'Approve'}
               </Button>
             </div>
           </div>
