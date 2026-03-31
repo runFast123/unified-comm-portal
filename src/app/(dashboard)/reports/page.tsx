@@ -54,6 +54,12 @@ function getDateRangeStart(range: DateRange, customFrom?: string): string {
       const today = new Date(now); today.setHours(0, 0, 0, 0);
       return today.toISOString()
     }
+    case 'yesterday': {
+      const yesterday = new Date(now)
+      yesterday.setDate(yesterday.getDate() - 1)
+      yesterday.setHours(0, 0, 0, 0)
+      return yesterday.toISOString()
+    }
     case '7d': return new Date(now.getTime() - 7 * 86400000).toISOString()
     case '30d': return new Date(now.getTime() - 30 * 86400000).toISOString()
     case '90d': return new Date(now.getTime() - 90 * 86400000).toISOString()
@@ -85,6 +91,7 @@ function getPreviousPeriodDates(range: DateRange, customFrom?: string, customTo?
 
   switch (range) {
     case 'today': durationMs = 86400000; break
+    case 'yesterday': durationMs = 86400000; break
     case '7d': durationMs = 7 * 86400000; break
     case '30d': durationMs = 30 * 86400000; break
     case '90d': durationMs = 90 * 86400000; break
@@ -554,14 +561,14 @@ export default function ReportsPage() {
             </button>
             <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-48 rounded-lg border border-gray-200 bg-white shadow-lg z-10">
               <a
-                href={`/api/export?type=messages&from=${getDateRangeStart(dateRange).split('T')[0]}`}
+                href={`/api/export?type=messages&from=${getDateRangeStart(dateRange, customFrom).split('T')[0]}${customTo ? `&to=${customTo}` : ''}`}
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                 download
               >
                 Messages (CSV)
               </a>
               <a
-                href={`/api/export?type=ai-replies&from=${getDateRangeStart(dateRange).split('T')[0]}`}
+                href={`/api/export?type=ai-replies&from=${getDateRangeStart(dateRange, customFrom).split('T')[0]}${customTo ? `&to=${customTo}` : ''}`}
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                 download
               >
