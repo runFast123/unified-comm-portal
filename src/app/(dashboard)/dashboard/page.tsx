@@ -10,6 +10,7 @@ import {
   Timer,
   Smile,
   Tag,
+  AlertOctagon,
 
   TrendingUp,
   Mail,
@@ -168,6 +169,15 @@ export default function DashboardPage() {
   const [companyStats, setCompanyStats] = useState<CompanyPerformance[]>([])
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
+  const [escalatedConversations, setEscalatedConversations] = useState<Array<{
+    id: string
+    participant_name: string | null
+    participant_email: string | null
+    account_name: string
+    channel: string
+    last_message_at: string | null
+    assigned_to_name: string | null
+  }>>([])
 
   // Drill-down state for clickable KPI cards
   type DashDrillDown = 'total' | 'pending' | 'ai_processed' | 'sla_breached' | 'spam' | null
@@ -631,6 +641,32 @@ export default function DashboardPage() {
           setCompanyStats(companyPerf)
         } catch (err) {
           console.error('Failed to fetch company stats:', err)
+        }
+
+        // Fetch escalated conversations
+        try {
+          const { data: escalated } = await supabase
+            .from('conversations')
+            .select('id, participant_name, participant_email, channel, last_message_at, account:accounts!inner(name), assigned:users!conversations_assigned_to_fkey(full_name)')
+            .eq('status', 'escalated')
+            .order('last_message_at', { ascending: false })
+            .limit(10)
+
+          setEscalatedConversations((escalated || []).map((c: Record<string, unknown>) => {
+            const acc = c.account as Record<string, unknown> | null
+            const assigned = c.assigned as Record<string, unknown> | null
+            return {
+              id: c.id as string,
+              participant_name: c.participant_name as string | null,
+              participant_email: c.participant_email as string | null,
+              account_name: (acc?.name as string) || 'Unknown',
+              channel: c.channel as string,
+              last_message_at: c.last_message_at as string | null,
+              assigned_to_name: (assigned?.full_name as string) || null,
+            }
+          }))
+        } catch (err) {
+          console.error('Failed to fetch escalated conversations:', err)
         }
 
         setKpis(processedKpis)
@@ -1203,6 +1239,49 @@ export default function DashboardPage() {
           )}
         </Card>
       </div>
+
+      {/* Escalated Conversations */}
+      {escalatedConversations.length > 0 && (
+        <Card
+          title={`Escalated Conversations (${escalatedConversations.length})`}
+          description="Conversations requiring urgent attention"
+          className="animate-slide-up stagger-3"
+        >
+          <div className="divide-y divide-gray-100">
+            {escalatedConversations.map((conv) => (
+              <Link
+                key={conv.id}
+                href={`/conversations/${conv.id}`}
+                className="flex items-center justify-between py-3 hover:bg-red-50 -mx-6 px-6 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100 shrink-0">
+                    <AlertOctagon size={16} className="text-red-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {conv.participant_name || conv.participant_email || 'Unknown'}
+                      </span>
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Urgent</span>
+                      <span className="text-xs text-gray-400 capitalize">{conv.channel}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-gray-500">{conv.account_name}</span>
+                      {conv.assigned_to_name && (
+                        <span className="text-xs text-teal-600">Assigned to {conv.assigned_to_name}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
+                  {conv.last_message_at ? new Date(conv.last_message_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Activity Feed */}
       <Card

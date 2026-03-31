@@ -520,19 +520,76 @@ export function ConversationActions({
     setLoading('escalate')
     try {
       const supabase = createClient()
+
+      // 1. Update conversation status + priority
       const { error } = await supabase
         .from('conversations')
         .update({ status: 'escalated', priority: 'urgent' })
         .eq('id', conversationId)
       if (error) throw error
-      toast.success('Conversation escalated!')
+
+      // 2. Auto-assign to first admin user
+      const { data: adminUser } = await supabase
+        .from('users')
+        .select('id, email, full_name')
+        .eq('role', 'admin')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+
+      if (adminUser) {
+        await supabase
+          .from('conversations')
+          .update({ assigned_to: adminUser.id })
+          .eq('id', conversationId)
+      }
+
+      // 3. Log to audit trail
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      try {
+        await supabase.from('audit_log').insert({
+          user_id: currentUser?.id || null,
+          action: 'conversation_escalated',
+          entity_type: 'conversation',
+          entity_id: conversationId,
+          details: {
+            account_name: accountName,
+            channel,
+            participant_email: participantEmail,
+            assigned_to_admin: adminUser?.email || null,
+          },
+        })
+      } catch { /* fire-and-forget */ }
+
+      // 4. Send email notification to admin
+      if (adminUser?.email) {
+        fetch('/api/notifications/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-webhook-secret': 'my-webhook-secret-123',
+          },
+          body: JSON.stringify({
+            to: adminUser.email,
+            sender_name: participantEmail || 'Unknown',
+            account_name: accountName,
+            channel,
+            subject: emailSubject || 'Escalated Conversation',
+            message_preview: `This conversation has been escalated to urgent priority and assigned to you.`,
+            conversation_id: conversationId,
+            priority: 'urgent',
+          }),
+        }).catch(() => {}) // fire-and-forget
+      }
+
+      toast.success(`Conversation escalated!${adminUser ? ` Assigned to ${adminUser.full_name || adminUser.email}` : ''}`)
       router.refresh()
     } catch (err: any) {
       toast.error('Failed to escalate: ' + err.message)
     } finally {
       setLoading(null)
     }
-  }, [conversationId, router, toast])
+  }, [conversationId, accountName, channel, participantEmail, emailSubject, router, toast])
 
   const handleResolve = useCallback(async () => {
     setLoading('resolve')
