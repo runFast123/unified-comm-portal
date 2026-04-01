@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient, createServerSupabaseClient } from '@/lib/supabase-server'
-import { callAI, getAccountSettings } from '@/lib/api-helpers'
+import { callAI, getAccountSettings, checkRateLimit } from '@/lib/api-helpers'
 import type { Category, Sentiment, Urgency } from '@/types/database'
 
 const DEFAULT_CLASSIFICATION_PROMPT = `You are a customer message classifier for a telecommunications company. Analyze the customer message and return a JSON object with the following fields:
@@ -41,6 +41,11 @@ export async function POST(request: Request) {
         { error: 'Missing required fields: message_id, message_text, account_id' },
         { status: 400 }
       )
+    }
+
+    // Rate limit per account
+    if (!checkRateLimit(`classify:${account_id}`)) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
     // Verify user has access to the requested account (skip for internal/webhook calls)
@@ -88,11 +93,21 @@ export async function POST(request: Request) {
 
     try {
       // Try to extract JSON from the response (handle potential markdown wrapping)
-      const jsonMatch = rawResponse.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        throw new Error('No JSON found in AI response')
+      // Use a balanced brace matcher to find the first valid JSON object
+      let jsonStr = ''
+      const startIdx = rawResponse.indexOf('{')
+      if (startIdx === -1) throw new Error('No JSON found in AI response')
+      let depth = 0
+      for (let i = startIdx; i < rawResponse.length; i++) {
+        if (rawResponse[i] === '{') depth++
+        if (rawResponse[i] === '}') depth--
+        if (depth === 0) {
+          jsonStr = rawResponse.substring(startIdx, i + 1)
+          break
+        }
       }
-      classification = JSON.parse(jsonMatch[0])
+      if (!jsonStr) throw new Error('No complete JSON object found in AI response')
+      classification = JSON.parse(jsonStr)
     } catch (parseError) {
       console.error('Failed to parse AI classification response:', parseError, rawResponse)
       // Return a fallback classification with low confidence so it gets flagged for review

@@ -118,6 +118,8 @@ export async function POST(request: Request) {
     const expectedSecret = process.env.N8N_WEBHOOK_SECRET
     const isInternalCall = webhookSecret === expectedSecret
 
+    let authenticatedUserId: string | null = null
+
     if (!isInternalCall) {
       // Check for authenticated user session
       const authSupabase = await createServerSupabaseClient()
@@ -125,6 +127,7 @@ export async function POST(request: Request) {
       if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
+      authenticatedUserId = user.id
     }
 
     let body: Record<string, unknown>
@@ -147,6 +150,15 @@ export async function POST(request: Request) {
         { error: 'Missing required fields: action, account_id' },
         { status: 400 }
       )
+    }
+
+    // Verify user has access to the requested account (skip for internal/webhook calls)
+    if (authenticatedUserId) {
+      const { verifyAccountAccess } = await import('@/lib/api-helpers')
+      const hasAccess = await verifyAccountAccess(authenticatedUserId, account_id)
+      if (!hasAccess) {
+        return NextResponse.json({ error: 'Access denied to this account' }, { status: 403 })
+      }
     }
 
     // Validate action

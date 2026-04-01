@@ -79,7 +79,7 @@ export async function findOrCreateConversation(
     .select('id')
     .eq('account_id', params.account_id)
     .eq('channel', params.channel)
-    .in('status', ['active', 'escalated'])
+    .in('status', ['active', 'in_progress', 'escalated', 'waiting_on_customer', 'resolved'])
 
   if (params.channel === 'teams' && params.teams_chat_id) {
     query = query.eq('teams_chat_id', params.teams_chat_id)

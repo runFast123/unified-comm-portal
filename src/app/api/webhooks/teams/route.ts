@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
     const body = await request.json()
 
-    // Accept Power Automate payload format
+    // Accept n8n webhook payload format
     const {
       account_id,
       sender_name,
@@ -48,16 +48,16 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!sender_name) {
+    if (!sender_name || (typeof sender_name === 'string' && sender_name.trim().length === 0)) {
       return NextResponse.json(
-        { error: 'Missing required field: sender_name' },
+        { error: 'Missing or empty required field: sender_name' },
         { status: 400 }
       )
     }
 
-    if (!message_text) {
+    if (!message_text || (typeof message_text === 'string' && message_text.trim().length === 0)) {
       return NextResponse.json(
-        { error: 'Missing required field: message_text' },
+        { error: 'Missing or empty required field: message_text' },
         { status: 400 }
       )
     }

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Archive, AlertTriangle, CheckCheck } from 'lucide-react'
+import { useToast } from '@/components/ui/toast'
 import { ChannelIcon } from '@/components/ui/channel-icon'
 import { Badge } from '@/components/ui/badge'
 import { SLABadge } from '@/components/inbox/sla-badge'
@@ -137,6 +138,7 @@ function getSentimentDot(sentiment: InboxItem['sentiment']) {
 
 export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: InboxRowProps) {
   const router = useRouter()
+  const { toast } = useToast()
 
   const handleRowClick = () => {
     if (onItemClick) {
@@ -161,7 +163,12 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
       .from('messages')
       .update(updateFields)
       .eq('id', item.message_id)
-    if (error) console.error('Failed to archive message:', error)
+    if (error) {
+      console.error('Failed to archive message:', error)
+      toast.error('Failed to archive message')
+    } else {
+      toast.success('Message archived')
+    }
   }
 
   const handleEscalate = async (e: React.MouseEvent) => {
@@ -171,7 +178,12 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
       .from('message_classifications')
       .update({ urgency: 'urgent' })
       .eq('message_id', item.message_id)
-    if (error) console.error('Failed to escalate message:', error)
+    if (error) {
+      console.error('Failed to escalate message:', error)
+      toast.error('Failed to escalate message')
+    } else {
+      toast.success('Message escalated to urgent')
+    }
   }
 
   const handleMarkReplied = async (e: React.MouseEvent) => {
@@ -181,7 +193,12 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
       .from('messages')
       .update({ replied: true, reply_required: false })
       .eq('id', item.message_id)
-    if (error) console.error('Failed to mark as replied:', error)
+    if (error) {
+      console.error('Failed to mark as replied:', error)
+      toast.error('Failed to mark as replied')
+    } else {
+      toast.success('Marked as replied')
+    }
   }
 
   const priorityColorClass = getPriorityColor(item.priority)

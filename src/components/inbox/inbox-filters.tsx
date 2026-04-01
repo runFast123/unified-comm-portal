@@ -37,6 +37,7 @@ const categoryOptions = [
   { value: 'Connection Issue', label: 'Connection Issue' },
   { value: 'Rate Issue', label: 'Rate Issue' },
   { value: 'General Inquiry', label: 'General Inquiry' },
+  { value: 'Newsletter/Marketing', label: 'Newsletter/Marketing' },
 ]
 
 const sentimentOptions = [
@@ -105,6 +106,7 @@ export function InboxFiltersBar({ filters, onChange }: InboxFiltersProps) {
         <div className="w-full sm:w-64">
           <Input
             placeholder="Search messages..."
+            aria-label="Search messages"
             icon={<Search size={16} />}
             value={filters.search}
             onChange={(e) => updateFilter('search', e.target.value)}

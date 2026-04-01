@@ -110,7 +110,37 @@ export function CompanyStatsTable({ stats }: Props) {
     else setDateFilteredStats(null)
   }, [specificDate, fetchForDate])
 
-  const displayStats = dateFilteredStats || stats
+  const rawStats = dateFilteredStats || stats
+
+  // Group by base company name (merge "Acepeak" + "Acepeak Teams" into one row)
+  const groupMap = new Map<string, CompanyPerformance>()
+  for (const s of rawStats) {
+    const baseName = s.name.replace(/\s+Teams$/i, '').trim()
+    const existing = groupMap.get(baseName)
+    if (existing) {
+      existing.totalMessages += s.totalMessages
+      existing.pendingReplies += s.pendingReplies
+      existing.aiDraftsReady += s.aiDraftsReady
+      existing.aiRepliesSent += s.aiRepliesSent
+      existing.responseRate = existing.totalMessages > 0
+        ? Math.round((existing.aiRepliesSent / existing.totalMessages) * 100)
+        : 0
+      if (!existing.topCategory && s.topCategory) existing.topCategory = s.topCategory
+      if (s.lastActivity && (!existing.lastActivity || s.lastActivity > existing.lastActivity)) {
+        existing.lastActivity = s.lastActivity
+      }
+      if (!existing.gmail_address && s.gmail_address) existing.gmail_address = s.gmail_address
+      // Track which channels exist
+      ;(existing as any)._hasEmail = (existing as any)._hasEmail || s.channel_type === 'email'
+      ;(existing as any)._hasTeams = (existing as any)._hasTeams || s.channel_type === 'teams'
+    } else {
+      const merged = { ...s, name: baseName }
+      ;(merged as any)._hasEmail = s.channel_type === 'email'
+      ;(merged as any)._hasTeams = s.channel_type === 'teams'
+      groupMap.set(baseName, merged)
+    }
+  }
+  const displayStats = Array.from(groupMap.values())
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -216,7 +246,7 @@ export function CompanyStatsTable({ stats }: Props) {
       <TableHeader>
         <TableRow>
           <SortableHead col="name">Company</SortableHead>
-          <TableHead>Email</TableHead>
+          <TableHead>Channels</TableHead>
           <SortableHead col="totalMessages">Messages</SortableHead>
           <SortableHead col="pendingReplies">Pending</SortableHead>
           <SortableHead col="aiDraftsReady">AI Drafts</SortableHead>
@@ -231,14 +261,25 @@ export function CompanyStatsTable({ stats }: Props) {
           <TableRow key={s.id} className="cursor-pointer hover:bg-gray-50 transition-colors">
             <TableCell>
               <Link href={`/accounts/${s.id}`} className="flex items-center gap-2 font-medium text-gray-900 hover:text-teal-700">
-                <ChannelIcon channel={s.channel_type} size={16} />
                 {s.name}
               </Link>
+              {s.gmail_address && (
+                <span className="text-xs text-gray-400 truncate max-w-[160px] block mt-0.5">{s.gmail_address}</span>
+              )}
             </TableCell>
             <TableCell>
-              <span className="text-xs text-gray-500 truncate max-w-[160px] block">
-                {s.gmail_address || <span className="text-gray-300 italic">--</span>}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {(s as any)._hasEmail && (
+                  <span className="flex items-center gap-1 rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600">
+                    <ChannelIcon channel="email" size={10} /> Email
+                  </span>
+                )}
+                {(s as any)._hasTeams && (
+                  <span className="flex items-center gap-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-600">
+                    <ChannelIcon channel="teams" size={10} /> Teams
+                  </span>
+                )}
+              </div>
             </TableCell>
             <TableCell>
               <span className="font-semibold text-gray-900">{s.totalMessages}</span>

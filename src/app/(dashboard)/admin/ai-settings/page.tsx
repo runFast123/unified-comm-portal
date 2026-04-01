@@ -38,6 +38,7 @@ const allCategories: Category[] = [
   'Connection Issue',
   'Rate Issue',
   'General Inquiry',
+  'Newsletter/Marketing',
 ]
 
 export default function AISettingsPage() {

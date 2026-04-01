@@ -126,7 +126,7 @@ function renderAttachments(attachments: unknown) {
                   <Download className="h-4 w-4" />
                 </a>
               ) : (
-                <span className="text-[10px] text-gray-300 px-2">No link</span>
+                <span className="text-[10px] text-gray-500 px-2">No link</span>
               )}
             </div>
           )
@@ -156,7 +156,7 @@ function parseSender(sender: string | null): { name: string; email: string } {
 
 /** Format email body - clean up quoted text, signatures, and formatting */
 function formatEmailBody(text: string | null): React.ReactNode {
-  if (!text) return <span className="text-gray-400 italic">No content</span>
+  if (!text) return <span className="text-gray-500 italic">No content</span>
 
   // Split into main body and quoted sections
   const lines = text.split('\n')

@@ -45,7 +45,7 @@ const mainNavItems = [
 ]
 
 const adminNavItems = [
-  { label: 'Accounts', href: '/admin/accounts', icon: Settings },
+  { label: 'Account Settings', href: '/admin/accounts', icon: Settings },
   { label: 'Channels', href: '/admin/channels', icon: Plug },
   { label: 'AI Settings', href: '/admin/ai-settings', icon: Brain },
   { label: 'Notifications', href: '/admin/notifications', icon: Bell },
@@ -126,20 +126,21 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1" aria-label="Main navigation">
           {mainNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={linkClasses(item.href)}
+              aria-current={isActive(item.href) ? 'page' : undefined}
               onClick={onClose}
             >
               <item.icon className="h-5 w-5 flex-shrink-0" />
               <span className="flex-1">{item.label}</span>
               {item.badge && pendingCount > 0 && (
-                <span className="relative flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
+                <span className="relative flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white" aria-label={`${pendingCount} pending messages`}>
                   {hasNewMessages && (
-                    <span className="absolute -inset-1 rounded-full bg-red-400 opacity-75 animate-ping" />
+                    <span className="absolute -inset-1 rounded-full bg-red-400 opacity-75 animate-ping" aria-hidden="true" />
                   )}
                   <span className="relative">{pendingCount > 99 ? '99+' : pendingCount}</span>
                 </span>
@@ -160,6 +161,7 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
                   key={`admin-${item.href}`}
                   href={item.href}
                   className={linkClasses(item.href)}
+                  aria-current={isActive(item.href) ? 'page' : undefined}
                   onClick={onClose}
                 >
                   <item.icon className="h-5 w-5 flex-shrink-0" />

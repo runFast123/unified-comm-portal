@@ -51,7 +51,7 @@ export interface Account {
   working_timezone: string | null
   is_active: boolean
   n8n_workflow_id: string | null
-  make_scenario_id: string | null  // DB column alias for n8n_workflow_id
+  make_scenario_id: string | null  // DB column name (maps to n8n_workflow_id)
   teams_reply_webhook_url: string | null
   sla_warning_hours: number
   sla_critical_hours: number

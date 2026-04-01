@@ -105,7 +105,7 @@ export async function POST(request: Request) {
       .update({
         status: 'sent',
         sent_at: new Date().toISOString(),
-        delivery_status: 'sent_to_power_automate',
+        delivery_status: 'sent_via_n8n',
       })
       .eq('conversation_id', conversation_id)
       .eq('account_id', account_id)
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       .eq('direction', 'inbound')
       .eq('replied', false)
 
-    // Return reply details in a format Power Automate can consume
+    // Return reply details for n8n to consume
     return NextResponse.json({
       success: true,
       reply_text,

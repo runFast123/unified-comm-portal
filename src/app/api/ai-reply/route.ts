@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient, createServerSupabaseClient } from '@/lib/supabase-server'
-import { callAI, getAccountSettings } from '@/lib/api-helpers'
+import { callAI, getAccountSettings, checkRateLimit } from '@/lib/api-helpers'
 import type { ChannelType, AIReplyStatus } from '@/types/database'
 
 const CHANNEL_SYSTEM_PROMPTS: Record<ChannelType, string> = {
@@ -47,6 +47,11 @@ export async function POST(request: Request) {
         },
         { status: 400 }
       )
+    }
+
+    // Rate limit per account
+    if (!checkRateLimit(`ai-reply:${account_id}`)) {
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
     // Verify user has access to the requested account (skip for internal/webhook calls)

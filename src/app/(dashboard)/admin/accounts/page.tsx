@@ -168,6 +168,16 @@ export default function AccountsPage() {
         n8n_workflow_id: row.make_scenario_id ?? null,
       })) as Account[]
 
+      // Sort: group by base company name, email first then teams
+      const channelOrder: Record<string, number> = { email: 0, teams: 1, whatsapp: 2 }
+      mapped.sort((a, b) => {
+        const baseA = a.name.replace(/\s+Teams$/i, '').trim()
+        const baseB = b.name.replace(/\s+Teams$/i, '').trim()
+        const nameCmp = baseA.localeCompare(baseB)
+        if (nameCmp !== 0) return nameCmp
+        return (channelOrder[a.channel_type] ?? 9) - (channelOrder[b.channel_type] ?? 9)
+      })
+
       setAccounts(mapped)
       setLoading(false)
     }
@@ -427,10 +437,15 @@ export default function AccountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((account) => (
+              {filtered.map((account, idx) => {
+                const baseName = account.name.replace(/\s+Teams$/i, '').trim()
+                const isTeamsRow = account.channel_type === 'teams' && account.name !== baseName
+                const prevBaseName = idx > 0 ? filtered[idx - 1].name.replace(/\s+Teams$/i, '').trim() : ''
+                const isFirstInGroup = baseName !== prevBaseName
+                return (
                 <TableRow
                   key={account.id}
-                  className="cursor-pointer"
+                  className={`cursor-pointer ${isTeamsRow ? 'bg-gray-50/50' : ''} ${isFirstInGroup && idx > 0 ? 'border-t-2 border-gray-200' : ''}`}
                   onClick={() => setDetailAccount(account)}
                 >
                   <TableCell onClick={(e) => e.stopPropagation()}>
@@ -488,7 +503,8 @@ export default function AccountsPage() {
                     <ChevronRight className="h-4 w-4 text-gray-400" />
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
         )}

@@ -407,7 +407,7 @@ export default function ChannelsPage() {
                       {new Date(acc.updated_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm">Re-authorize</Button>
+                      <Button variant="ghost" size="sm" onClick={() => toast.info('Gmail re-authorization coming soon')}>Re-authorize</Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -469,7 +469,7 @@ export default function ChannelsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm">Manage Templates</Button>
+                        <Button variant="ghost" size="sm" onClick={() => toast.info('WhatsApp template management coming soon')}>Manage Templates</Button>
                       </TableCell>
                     </TableRow>
                   ))}
