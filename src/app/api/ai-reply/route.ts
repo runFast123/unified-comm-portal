@@ -99,38 +99,71 @@ export async function POST(request: Request) {
     }
 
     // Add account context so AI knows which company it's responding for
-    systemPrompt += `\n\nYou are replying on behalf of "${account.name}". Always maintain this company identity in your response.`
+    systemPrompt += `\n\nYou are replying on behalf of "${account.name}". Always maintain this company identity in your response. CRITICAL: You MUST follow the company's Knowledge Base rules and tone. Never mention other companies. Never use information from outside the Knowledge Base.`
 
-    // Fetch relevant Knowledge Base articles scoped to this account + general articles
+    // Fetch ALL Knowledge Base articles for this account (company-specific KB)
     const { data: kbArticles } = await supabase
       .from('kb_articles')
       .select('id, title, content, category')
       .eq('is_active', true)
       .or(`account_id.eq.${account_id},account_id.is.null`)
-      .limit(10)
+      .order('title')
 
     let kbContext = ''
     const matchedKbIds: string[] = []
     if (kbArticles && kbArticles.length > 0) {
-      // Simple keyword matching — find articles relevant to the message
+      // Include ALL company KB articles — they are the company's sales playbook
+      // Prioritize: first include the Sales Chatbot Identity (most important),
+      // then find best matching articles based on message content
       const msgLower = (message_text || '').toLowerCase()
-      const relevantArticles = kbArticles.filter((kb: any) => {
-        if (!kb.title || !kb.content) return false
-        const titleWords = kb.title.toLowerCase().split(/\s+/)
-        const contentWords = kb.content.toLowerCase().substring(0, 500).split(/\s+/)
-        const allWords = [...titleWords, ...contentWords]
-        // Match if any significant word (>3 chars) from the article appears in the message
-        return allWords.some((w: string) => w.length > 3 && msgLower.includes(w))
-      }).slice(0, 3) // Max 3 articles to avoid prompt overflow
 
-      if (relevantArticles.length > 0) {
-        kbContext = '\n\n--- Knowledge Base Reference ---\nUse the following knowledge base articles to inform your reply. Prefer information from these articles over general knowledge:\n\n'
-        relevantArticles.forEach((kb: any, i: number) => {
-          kbContext += `[Article ${i + 1}: ${kb.title}]\n${kb.content.substring(0, 1000)}\n\n`
-          matchedKbIds.push(kb.id)
+      // Always include the chatbot identity/rules article first (it has response rules)
+      const identityArticle = kbArticles.find((kb: any) =>
+        kb.title?.toLowerCase().includes('chatbot identity') || kb.title?.toLowerCase().includes('sales chatbot')
+      )
+
+      // Score remaining articles by keyword relevance
+      const scoredArticles = kbArticles
+        .filter((kb: any) => kb.id !== identityArticle?.id)
+        .map((kb: any) => {
+          let score = 0
+          const content = (kb.content || '').toLowerCase()
+          // Check for key terms from the customer message
+          const msgWords = msgLower.split(/\s+/).filter((w: string) => w.length > 4)
+          for (const word of msgWords) {
+            if (content.includes(word)) score += 1
+          }
+          // Boost articles whose category/title matches message keywords
+          const titleLower = (kb.title || '').toLowerCase()
+          if (msgLower.includes('route') || msgLower.includes('rate') || msgLower.includes('pricing')) {
+            if (titleLower.includes('route') || titleLower.includes('pricing')) score += 10
+          }
+          if (msgLower.includes('ucaas') || msgLower.includes('phone') || msgLower.includes('dialer') || msgLower.includes('sms')) {
+            if (titleLower.includes('ucaas') || titleLower.includes('sms') || titleLower.includes('dialer')) score += 10
+          }
+          if (msgLower.includes('compliance') || msgLower.includes('billing') || msgLower.includes('refund') || msgLower.includes('support')) {
+            if (titleLower.includes('compliance') || titleLower.includes('billing') || titleLower.includes('support')) score += 10
+          }
+          return { ...kb, score }
         })
-        kbContext += '--- End Knowledge Base ---\n'
+        .sort((a: any, b: any) => b.score - a.score)
+
+      // Build KB context: identity article (full) + top 2 scored articles (more content)
+      kbContext = '\n\n--- Company Knowledge Base ---\nYou MUST use ONLY the following knowledge base to answer. Do NOT use any external knowledge. If the answer is not in the KB, say you will connect them with the commercial team.\n\n'
+
+      if (identityArticle) {
+        kbContext += `[COMPANY IDENTITY & RULES]\n${identityArticle.content.substring(0, 4000)}\n\n`
+        matchedKbIds.push(identityArticle.id)
       }
+
+      // Include top scored articles with more content (up to 6000 chars each)
+      const topArticles = scoredArticles.slice(0, 3)
+      topArticles.forEach((kb: any, i: number) => {
+        kbContext += `[${kb.title}]\n${kb.content.substring(0, 6000)}\n\n`
+        matchedKbIds.push(kb.id)
+      })
+
+      kbContext += '--- End Knowledge Base ---\n'
     }
 
     systemPrompt += kbContext
