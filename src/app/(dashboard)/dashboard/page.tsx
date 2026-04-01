@@ -584,7 +584,7 @@ export default function DashboardPage() {
         try {
           const companyPerf: CompanyPerformance[] = await Promise.all(
             (accountsResult.data || []).map(async (acc: { id: string; name: string; channel_type: string; gmail_address: string | null }) => {
-              const [totalRes, pendingRes, aiSentRes, classRes] = await Promise.all([
+              const [totalRes, pendingRes, aiSentRes, aiDraftsRes, classRes] = await Promise.all([
                 supabase
                   .from('messages')
                   .select('*', { count: 'exact', head: true })
@@ -606,6 +606,12 @@ export default function DashboardPage() {
                   .eq('status', 'sent')
                   .gte('created_at', rangeISO),
                 supabase
+                  .from('ai_replies')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('account_id', acc.id)
+                  .in('status', ['pending_approval', 'edited'])
+                  .gte('created_at', rangeISO),
+                supabase
                   .from('message_classifications')
                   .select('category, messages!inner(account_id)')
                   .eq('messages.account_id', acc.id)
@@ -616,6 +622,7 @@ export default function DashboardPage() {
               const total = totalRes.count || 0
               const pending = pendingRes.count || 0
               const aiSent = aiSentRes.count || 0
+              const aiDrafts = aiDraftsRes.count || 0
 
               // Compute top category
               const catCounts: Record<string, number> = {}
@@ -631,6 +638,7 @@ export default function DashboardPage() {
                 gmail_address: acc.gmail_address,
                 totalMessages: total,
                 pendingReplies: pending,
+                aiDraftsReady: aiDrafts,
                 aiRepliesSent: aiSent,
                 responseRate: total > 0 ? Math.round((aiSent / total) * 100) : 0,
                 topCategory: topCat ? topCat[0] : null,

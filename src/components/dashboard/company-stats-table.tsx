@@ -17,13 +17,14 @@ export interface CompanyPerformance {
   gmail_address: string | null
   totalMessages: number
   pendingReplies: number
+  aiDraftsReady: number
   aiRepliesSent: number
   responseRate: number
   topCategory: string | null
   lastActivity: string | null
 }
 
-type SortKey = 'name' | 'totalMessages' | 'pendingReplies' | 'aiRepliesSent' | 'responseRate' | 'lastActivity'
+type SortKey = 'name' | 'totalMessages' | 'pendingReplies' | 'aiDraftsReady' | 'aiRepliesSent' | 'responseRate' | 'lastActivity'
 
 interface Props {
   stats: CompanyPerformance[]
@@ -55,7 +56,7 @@ export function CompanyStatsTable({ stats }: Props) {
 
     const results: CompanyPerformance[] = await Promise.all(
       accounts.map(async (acc) => {
-        const [totalRes, pendingRes, aiSentRes, classRes] = await Promise.all([
+        const [totalRes, pendingRes, aiSentRes, aiDraftsRes, classRes] = await Promise.all([
           supabase.from('messages').select('*', { count: 'exact', head: true })
             .eq('account_id', acc.id).eq('direction', 'inbound')
             .gte('received_at', startOfDay).lte('received_at', endOfDay),
@@ -66,6 +67,9 @@ export function CompanyStatsTable({ stats }: Props) {
           supabase.from('ai_replies').select('*', { count: 'exact', head: true })
             .eq('account_id', acc.id).eq('status', 'sent')
             .gte('created_at', startOfDay).lte('created_at', endOfDay),
+          supabase.from('ai_replies').select('*', { count: 'exact', head: true })
+            .eq('account_id', acc.id).in('status', ['pending_approval', 'edited'])
+            .gte('created_at', startOfDay).lte('created_at', endOfDay),
           supabase.from('message_classifications')
             .select('category, messages!inner(account_id)')
             .eq('messages.account_id', acc.id)
@@ -75,6 +79,7 @@ export function CompanyStatsTable({ stats }: Props) {
         const total = totalRes.count || 0
         const pending = pendingRes.count || 0
         const aiSent = aiSentRes.count || 0
+        const aiDrafts = aiDraftsRes.count || 0
         const catCounts: Record<string, number> = {}
         ;(classRes.data || []).forEach((c: { category: string }) => {
           catCounts[c.category] = (catCounts[c.category] || 0) + 1
@@ -88,6 +93,7 @@ export function CompanyStatsTable({ stats }: Props) {
           gmail_address: acc.gmail_address as string | null,
           totalMessages: total,
           pendingReplies: pending,
+          aiDraftsReady: aiDrafts,
           aiRepliesSent: aiSent,
           responseRate: total > 0 ? Math.round((aiSent / total) * 100) : 0,
           topCategory: topCat ? topCat[0] : null,
@@ -121,6 +127,7 @@ export function CompanyStatsTable({ stats }: Props) {
       case 'name': cmp = a.name.localeCompare(b.name); break
       case 'totalMessages': cmp = a.totalMessages - b.totalMessages; break
       case 'pendingReplies': cmp = a.pendingReplies - b.pendingReplies; break
+      case 'aiDraftsReady': cmp = a.aiDraftsReady - b.aiDraftsReady; break
       case 'aiRepliesSent': cmp = a.aiRepliesSent - b.aiRepliesSent; break
       case 'responseRate': cmp = a.responseRate - b.responseRate; break
       case 'lastActivity':
@@ -212,6 +219,7 @@ export function CompanyStatsTable({ stats }: Props) {
           <TableHead>Email</TableHead>
           <SortableHead col="totalMessages">Messages</SortableHead>
           <SortableHead col="pendingReplies">Pending</SortableHead>
+          <SortableHead col="aiDraftsReady">AI Drafts</SortableHead>
           <SortableHead col="aiRepliesSent">AI Sent</SortableHead>
           <SortableHead col="responseRate">Response Rate</SortableHead>
           <TableHead>Top Category</TableHead>
@@ -239,6 +247,9 @@ export function CompanyStatsTable({ stats }: Props) {
               <span className={`font-semibold ${s.pendingReplies > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
                 {s.pendingReplies}
               </span>
+            </TableCell>
+            <TableCell>
+              <span className={`font-semibold ${s.aiDraftsReady > 0 ? 'text-purple-600' : 'text-gray-400'}`}>{s.aiDraftsReady}</span>
             </TableCell>
             <TableCell>
               <span className="font-semibold text-teal-700">{s.aiRepliesSent}</span>
