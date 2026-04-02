@@ -118,15 +118,10 @@ export async function POST(request: Request) {
       participant_email: sender_email || null,
     })
 
-    // Store metadata in attachments JSON (team_name, channel_name, parent info)
-    const metadata: Record<string, unknown> = {}
-    if (team_name) metadata.team_name = team_name
-    if (channel_name) metadata.channel_name = channel_name
-    if (is_reply) metadata.is_reply = is_reply
-    if (parent_message_id) metadata.parent_message_id = parent_message_id
-    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
-      metadata.attachments = attachments
-    }
+    // Only store actual file attachments — NOT metadata like team_name, channel_name
+    const fileAttachments = (attachments && Array.isArray(attachments) && attachments.length > 0)
+      ? attachments
+      : null
 
     // Store message in messages table
     const { data: message, error: msgError } = await supabase
@@ -141,7 +136,7 @@ export async function POST(request: Request) {
         message_text: messageText,
         message_type: (message_type === 'message' ? 'text' : message_type) || 'text',
         direction: 'inbound',
-        attachments: Object.keys(metadata).length > 0 ? metadata : null,
+        attachments: fileAttachments,
         replied: false,
         reply_required: true,
         timestamp: timestamp || new Date().toISOString(),

@@ -77,10 +77,22 @@ function renderAttachments(attachments: unknown) {
   let items: AttachmentItem[] = []
 
   if (Array.isArray(attachments)) {
-    items = attachments
+    // Filter to only real file attachments (must have filename or name)
+    items = attachments.filter((att: any) =>
+      att && (att.filename || att.name || att.url || att.contentUrl)
+    )
   } else if (typeof attachments === 'object' && attachments !== null) {
-    // Could be a single attachment or object with keys
-    items = [attachments as AttachmentItem]
+    const obj = attachments as Record<string, unknown>
+    // Skip metadata objects (team_name, channel_name, is_reply, etc.) — NOT real attachments
+    if (obj.filename || obj.name || obj.url || obj.contentUrl) {
+      items = [obj as AttachmentItem]
+    }
+    // If it has an "attachments" sub-array (legacy format), extract those
+    if (Array.isArray(obj.attachments)) {
+      items = (obj.attachments as AttachmentItem[]).filter((att: any) =>
+        att && (att.filename || att.name || att.url || att.contentUrl)
+      )
+    }
   }
 
   if (items.length === 0) return null
