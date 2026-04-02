@@ -225,6 +225,42 @@ export default function DashboardPage() {
     const supabase = createClient()
     const startDate = getDateRangeStart(dateRange, customFrom)
 
+    // For ai_processed, query ai_replies table instead of messages
+    if (type === 'ai_processed') {
+      let aiQuery = supabase
+        .from('ai_replies')
+        .select('id, message_id, draft_text, status, channel, created_at, account_id, conversation_id, messages!inner(sender_name, email_subject, message_text, received_at, replied, is_spam), accounts!ai_replies_account_id_fkey(name)')
+        .eq('status', 'sent')
+        .order('created_at', { ascending: false })
+        .limit(200)
+
+      if (startDate) aiQuery = aiQuery.gte('created_at', startDate)
+      if (selectedAccountIds.size > 0) {
+        aiQuery = aiQuery.in('account_id', Array.from(selectedAccountIds))
+      }
+
+      const { data: aiData } = await aiQuery
+      const mapped: DashDrillMsg[] = (aiData || []).map((r: any) => {
+        const msg = r.messages as any
+        const acc = r.accounts as any
+        return {
+          id: r.message_id,
+          sender_name: msg?.sender_name || null,
+          email_subject: msg?.email_subject || null,
+          message_text: msg?.message_text || null,
+          received_at: msg?.received_at || r.created_at,
+          replied: msg?.replied ?? true,
+          is_spam: msg?.is_spam ?? false,
+          conversation_id: r.conversation_id,
+          account_name: acc?.name || undefined,
+          channel: r.channel || 'email',
+        }
+      })
+      setDashDrillMsgs(mapped)
+      setDashDrillLoading(false)
+      return
+    }
+
     let query = supabase
       .from('messages')
       .select('id, sender_name, email_subject, message_text, received_at, replied, is_spam, conversation_id, channel, accounts!messages_account_id_fkey(name)')
@@ -239,12 +275,22 @@ export default function DashboardPage() {
       query = query.in('account_id', Array.from(selectedAccountIds))
     }
 
+    // Match drill-down filters exactly to KPI card queries
     switch (type) {
-      case 'total': break // show ALL inbound messages (matches the KPI count)
-      case 'pending': query = query.eq('reply_required', true).eq('replied', false).eq('is_spam', false); break
-      case 'spam': query = query.eq('is_spam', true); break
-      case 'sla_breached': query = query.eq('reply_required', true).eq('replied', false).eq('is_spam', false); break
-      case 'ai_processed': query = query.eq('is_spam', false); break
+      case 'total':
+        // KPI counts ALL inbound messages (channelMsgQuery has no spam filter)
+        break
+      case 'pending':
+        // KPI: reply_required=true, replied=false (channelPendingQuery has no spam filter)
+        query = query.eq('reply_required', true).eq('replied', false)
+        break
+      case 'spam':
+        query = query.eq('is_spam', true)
+        break
+      case 'sla_breached':
+        // KPI counts messages waiting >4h (unreplied + past threshold)
+        query = query.eq('reply_required', true).eq('replied', false).eq('is_spam', false)
+        break
     }
 
     const { data } = await query
