@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       attachments,
       is_reply,
       parent_message_id,
+      is_agent_message,
     } = body
 
     if (!account_id) {
@@ -123,6 +124,11 @@ export async function POST(request: Request) {
       ? attachments
       : null
 
+    // Determine if this is an agent message (company user replying in Teams)
+    const isAgent = is_agent_message === true
+    const senderType = isAgent ? 'agent' : 'customer'
+    const direction = isAgent ? 'outbound' : 'inbound'
+
     // Store message in messages table
     const { data: message, error: msgError } = await supabase
       .from('messages')
@@ -132,13 +138,13 @@ export async function POST(request: Request) {
         channel: 'teams',
         teams_message_id: teams_message_id || null,
         sender_name: sender_name || null,
-        sender_type: 'customer',
+        sender_type: senderType,
         message_text: messageText,
         message_type: (message_type === 'message' ? 'text' : message_type) || 'text',
-        direction: 'inbound',
+        direction,
         attachments: fileAttachments,
-        replied: false,
-        reply_required: true,
+        replied: isAgent ? true : false,
+        reply_required: isAgent ? false : true,
         timestamp: timestamp || new Date().toISOString(),
         received_at: new Date().toISOString(),
       })
@@ -169,6 +175,22 @@ export async function POST(request: Request) {
       }).catch(err => console.error('Notification trigger failed:', err))
     } catch (notifErr) {
       console.error('Failed to load notification service:', notifErr)
+    }
+
+    // Skip AI processing for agent messages (they're our own replies, not customer inquiries)
+    if (isAgent) {
+      // If agent message, also mark the inbound messages in this conversation as replied
+      await supabase
+        .from('messages')
+        .update({ replied: true })
+        .eq('conversation_id', conversationId)
+        .eq('direction', 'inbound')
+        .eq('replied', false)
+
+      return NextResponse.json(
+        { message_id: message.id, conversation_id: conversationId, is_agent: true },
+        { status: 201 }
+      )
     }
 
     // Get account settings for phase flags

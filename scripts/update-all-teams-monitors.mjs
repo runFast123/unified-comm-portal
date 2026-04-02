@@ -195,13 +195,6 @@ for (const msg of messages) {
   // Skip bot/application messages
   if (msg.from && msg.from.application) continue;
 
-  // Skip OUR OWN messages (the authenticated user / agent)
-  const senderUserId = msg.from?.user?.id || '';
-  if (myUserId && senderUserId === myUserId) continue;
-  // Also skip by display name as fallback
-  const senderName = msg.from?.user?.displayName || msg.from?.displayName || '';
-  if (myDisplayName && senderName === myDisplayName) continue;
-
   // Skip empty messages
   if (!msg.body || !msg.body.content) continue;
 
@@ -217,6 +210,11 @@ for (const msg of messages) {
 
   if (!text || text.length < 2) continue;
 
+  // Detect if this message is from the agent (our own user)
+  const senderUserId = msg.from?.user?.id || '';
+  const senderName = msg.from?.user?.displayName || msg.from?.displayName || '';
+  const isAgent = (myUserId && senderUserId === myUserId) || (myDisplayName && senderName === myDisplayName);
+
   results.push({
     account_id: '${accountId}',
     sender_name: msg.from?.user?.displayName || msg.from?.displayName || 'Unknown',
@@ -228,6 +226,7 @@ for (const msg of messages) {
     channel_name: topic || null,
     timestamp: msg.createdDateTime,
     message_type: 'message',
+    is_agent_message: isAgent,
   });
 }
 
@@ -254,7 +253,7 @@ return results.map(r => ({ json: r }));`,
           },
           sendBody: true,
           specifyBody: 'json',
-          jsonBody: '={{ JSON.stringify({ account_id: $json.account_id, sender_name: $json.sender_name, sender_email: $json.sender_email, message_text: $json.message_text, teams_message_id: $json.teams_message_id, teams_chat_id: $json.teams_chat_id, team_name: $json.team_name, channel_name: $json.channel_name, timestamp: $json.timestamp, message_type: $json.message_type }) }}',
+          jsonBody: '={{ JSON.stringify({ account_id: $json.account_id, sender_name: $json.sender_name, sender_email: $json.sender_email, message_text: $json.message_text, teams_message_id: $json.teams_message_id, teams_chat_id: $json.teams_chat_id, team_name: $json.team_name, channel_name: $json.channel_name, timestamp: $json.timestamp, message_type: $json.message_type, is_agent_message: $json.is_agent_message }) }}',
           options: { timeout: 30000, batching: { batch: { batchSize: 1, batchInterval: 500 } } },
         },
         name: 'Send to Portal',
