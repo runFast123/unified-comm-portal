@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
+import { ChevronDown, ChevronRight, ExternalLink, MessageCircle, Clock } from 'lucide-react'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { ChannelIcon } from '@/components/ui/channel-icon'
 import { PhaseIndicator } from '@/components/ui/phase-indicator'
@@ -27,6 +29,8 @@ interface GroupedAccount {
 }
 
 export function AccountsTable({ accounts, filter }: AccountsTableProps) {
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+
   const filtered =
     filter === 'all'
       ? accounts
@@ -63,6 +67,7 @@ export function AccountsTable({ accounts, filter }: AccountsTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead className="w-8" />
           <TableHead>Company</TableHead>
           <TableHead>Channels</TableHead>
           <TableHead>Phase Status</TableHead>
@@ -74,60 +79,114 @@ export function AccountsTable({ accounts, filter }: AccountsTableProps) {
         {groups.map((group) => {
           const primary = group.email || group.teams
           if (!primary) return null
+          const isExpanded = expandedRow === group.baseName
           return (
-            <TableRow key={group.baseName}>
-              <TableCell>
-                <Link
-                  href={`/accounts/${primary.id}`}
-                  className="font-medium text-gray-900 hover:text-teal-600 transition-colors"
-                >
-                  {group.baseName}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  {group.email && (
-                    <Link href={`/accounts/${group.email.id}`} className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-xs text-red-700 hover:bg-red-100 transition-colors" title="Email">
-                      <ChannelIcon channel="email" size={12} />
-                      Email
-                    </Link>
+            <>
+              <TableRow
+                key={group.baseName}
+                className="cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setExpandedRow(isExpanded ? null : group.baseName)}
+              >
+                <TableCell className="w-8 pr-0">
+                  {isExpanded
+                    ? <ChevronDown className="h-4 w-4 text-gray-400" />
+                    : <ChevronRight className="h-4 w-4 text-gray-400" />}
+                </TableCell>
+                <TableCell>
+                  <span className="font-medium text-gray-900">{group.baseName}</span>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    {group.email && (
+                      <span className="flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-xs text-red-700" title="Email">
+                        <ChannelIcon channel="email" size={12} /> Email
+                      </span>
+                    )}
+                    {group.teams && (
+                      <span className="flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700" title="Teams">
+                        <ChannelIcon channel="teams" size={12} /> Teams
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <PhaseIndicator
+                    phase1_enabled={primary.phase1_enabled}
+                    phase2_enabled={primary.phase2_enabled}
+                  />
+                </TableCell>
+                <TableCell className="text-center">
+                  {group.totalPending > 0 ? (
+                    <Badge variant={group.totalPending >= 4 ? 'danger' : 'warning'} size="sm">
+                      {group.totalPending}
+                    </Badge>
+                  ) : (
+                    <span className="text-gray-400">0</span>
                   )}
-                  {group.teams && (
-                    <Link href={`/accounts/${group.teams.id}`} className="flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700 hover:bg-indigo-100 transition-colors" title="Teams">
-                      <ChannelIcon channel="teams" size={12} />
-                      Teams
-                    </Link>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <PhaseIndicator
-                  phase1_enabled={primary.phase1_enabled}
-                  phase2_enabled={primary.phase2_enabled}
-                />
-              </TableCell>
-              <TableCell className="text-center">
-                {group.totalPending > 0 ? (
-                  <Badge variant={group.totalPending >= 4 ? 'danger' : 'warning'} size="sm">
-                    {group.totalPending}
-                  </Badge>
-                ) : (
-                  <span className="text-gray-400">0</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <span className="text-sm text-gray-500">
-                  {group.lastMessageTime
-                    ? `${timeAgo(group.lastMessageTime)} ago`
-                    : 'No messages yet'}
-                </span>
-              </TableCell>
-            </TableRow>
+                </TableCell>
+                <TableCell>
+                  <span className="text-sm text-gray-500">
+                    {group.lastMessageTime
+                      ? `${timeAgo(group.lastMessageTime)} ago`
+                      : 'No messages yet'}
+                  </span>
+                </TableCell>
+              </TableRow>
+
+              {/* Expanded detail row */}
+              {isExpanded && (
+                <TableRow key={`${group.baseName}-detail`} className="bg-gray-50/50">
+                  <TableCell />
+                  <TableCell colSpan={5}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-1">
+                      {group.email && (
+                        <Link
+                          href={`/accounts/${group.email.id}`}
+                          className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-teal-300 hover:shadow-sm transition-all group"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50">
+                            <ChannelIcon channel="email" size={18} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 group-hover:text-teal-700">Email Channel</p>
+                            <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                              <span className="flex items-center gap-1"><MessageCircle size={10} /> {group.email.pendingCount} pending</span>
+                              <span className="flex items-center gap-1"><Clock size={10} /> {group.email.lastMessageTime ? timeAgo(group.email.lastMessageTime) : 'No activity'}</span>
+                            </div>
+                          </div>
+                          <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-teal-500" />
+                        </Link>
+                      )}
+                      {group.teams && (
+                        <Link
+                          href={`/accounts/${group.teams.id}`}
+                          className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-teal-300 hover:shadow-sm transition-all group"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50">
+                            <ChannelIcon channel="teams" size={18} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 group-hover:text-teal-700">Teams Channel</p>
+                            <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                              <span className="flex items-center gap-1"><MessageCircle size={10} /> {group.teams.pendingCount} pending</span>
+                              <span className="flex items-center gap-1"><Clock size={10} /> {group.teams.lastMessageTime ? timeAgo(group.teams.lastMessageTime) : 'No activity'}</span>
+                            </div>
+                          </div>
+                          <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-teal-500" />
+                        </Link>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </>
           )
         })}
         {groups.length === 0 && (
           <TableRow>
-            <TableCell colSpan={5} className="py-8 text-center text-gray-400">
+            <TableCell colSpan={6} className="py-8 text-center text-gray-400">
               No accounts match the selected filter.
             </TableCell>
           </TableRow>

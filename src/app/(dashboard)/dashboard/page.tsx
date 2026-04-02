@@ -191,6 +191,28 @@ export default function DashboardPage() {
     is_spam: boolean
     conversation_id: string
     account_name?: string
+    channel?: ChannelType
+  }
+
+  /** Clean raw sender name: "Name" <email> → Name */
+  function cleanName(raw: string | null): string {
+    if (!raw) return 'Unknown'
+    let name = raw.replace(/<[^>]+>/g, '').trim()
+    name = name.replace(/^["']+|["']+$/g, '').trim()
+    if (!name && raw.includes('@')) {
+      const email = raw.match(/<([^>]+)>/)?.[1] || raw
+      name = email.split('@')[0].replace(/[._-]/g, ' ')
+      name = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    }
+    return name || 'Unknown'
+  }
+
+  function extractEmail(raw: string | null): string {
+    if (!raw) return ''
+    const match = raw.match(/<([^>]+)>/)
+    if (match) return match[1]
+    if (raw.includes('@')) return raw.trim()
+    return ''
   }
   const [dashDrill, setDashDrill] = useState<DashDrillDown>(null)
   const [dashDrillMsgs, setDashDrillMsgs] = useState<DashDrillMsg[]>([])
@@ -205,7 +227,7 @@ export default function DashboardPage() {
 
     let query = supabase
       .from('messages')
-      .select('id, sender_name, email_subject, message_text, received_at, replied, is_spam, conversation_id, accounts!messages_account_id_fkey(name)')
+      .select('id, sender_name, email_subject, message_text, received_at, replied, is_spam, conversation_id, channel, accounts!messages_account_id_fkey(name)')
       .eq('direction', 'inbound')
       .order('received_at', { ascending: false })
       .limit(50)
@@ -238,6 +260,7 @@ export default function DashboardPage() {
         is_spam: m.is_spam as boolean,
         conversation_id: m.conversation_id as string,
         account_name: (acc?.name as string) || undefined,
+        channel: (m.channel as ChannelType) || 'email',
       }
     })
     setDashDrillMsgs(mapped)
@@ -1117,6 +1140,7 @@ export default function DashboardPage() {
             <button
               onClick={() => { setDashDrill(null); setDashDrillMsgs([]) }}
               className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              aria-label="Close panel"
             >
               <X size={16} />
             </button>
@@ -1125,7 +1149,7 @@ export default function DashboardPage() {
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex gap-3 animate-pulse">
-                  <div className="h-8 w-8 rounded-full bg-gray-200 shrink-0" />
+                  <div className="h-10 w-10 rounded-xl bg-gray-200 shrink-0" />
                   <div className="flex-1 space-y-2">
                     <div className="h-4 w-40 bg-gray-200 rounded" />
                     <div className="h-3 w-64 bg-gray-200 rounded" />
@@ -1136,42 +1160,66 @@ export default function DashboardPage() {
           ) : dashDrillMsgs.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-6">No messages found for this filter.</p>
           ) : (
-            <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
-              {dashDrillMsgs.map((msg) => (
-                <Link
-                  key={msg.id}
-                  href={msg.conversation_id ? `/conversations/${msg.conversation_id}` : '#'}
-                  className="flex items-start gap-3 py-3 hover:bg-gray-50 -mx-6 px-6 transition-colors"
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 shrink-0 mt-0.5">
-                    <Mail size={14} className="text-gray-500" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {msg.sender_name || 'Unknown sender'}
-                      </span>
-                      <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
-                        {new Date(msg.received_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </span>
+            <div className="max-h-[500px] overflow-y-auto space-y-1.5">
+              {dashDrillMsgs.map((msg) => {
+                const name = cleanName(msg.sender_name)
+                const email = extractEmail(msg.sender_name)
+                const initials = name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2)
+                const avatarColors = ['bg-teal-500', 'bg-blue-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500', 'bg-emerald-500', 'bg-cyan-500']
+                const colorIdx = Math.abs(name.split('').reduce((h, c) => c.charCodeAt(0) + ((h << 5) - h), 0)) % avatarColors.length
+                return (
+                  <Link
+                    key={msg.id}
+                    href={msg.conversation_id ? `/conversations/${msg.conversation_id}` : '#'}
+                    className="group flex items-start gap-3 rounded-xl px-4 py-3 hover:bg-gray-50 transition-all border border-transparent hover:border-gray-200 hover:shadow-sm"
+                  >
+                    {/* Avatar */}
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${avatarColors[colorIdx]} text-white text-xs font-bold shrink-0 mt-0.5`}>
+                      {initials || '?'}
                     </div>
-                    {msg.email_subject && (
-                      <p className="text-xs font-medium text-gray-600 truncate">{msg.email_subject}</p>
-                    )}
-                    <p className="text-xs text-gray-400 truncate mt-0.5">
-                      {msg.message_text?.slice(0, 100) || 'No content'}
-                    </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      {msg.account_name && (
-                        <Badge variant="info" size="sm">{msg.account_name}</Badge>
+
+                    {/* Content */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-semibold text-gray-900 truncate group-hover:text-teal-700 transition-colors">
+                            {name}
+                          </span>
+                          {email && (
+                            <span className="text-xs text-gray-400 truncate hidden sm:inline">{email}</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
+                          {new Date(msg.received_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+
+                      {msg.email_subject && (
+                        <p className="text-sm font-medium text-gray-700 truncate mt-0.5">{msg.email_subject}</p>
                       )}
-                      {msg.is_spam && <Badge variant="danger" size="sm">Spam</Badge>}
-                      {!msg.replied && !msg.is_spam && <Badge variant="warning" size="sm">Pending</Badge>}
-                      {msg.replied && <Badge variant="success" size="sm">Replied</Badge>}
+
+                      <p className="text-xs text-gray-500 truncate mt-0.5 leading-relaxed">
+                        {msg.message_text?.slice(0, 120) || 'No content'}
+                      </p>
+
+                      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                        {msg.account_name && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                            <ChannelIcon channel={msg.channel || 'email'} size={10} />
+                            {msg.account_name.replace(/\s+Teams$/i, '')}
+                          </span>
+                        )}
+                        {msg.is_spam && <Badge variant="danger" size="sm">Spam</Badge>}
+                        {!msg.replied && !msg.is_spam && <Badge variant="warning" size="sm">Pending</Badge>}
+                        {msg.replied && <Badge variant="success" size="sm">Replied</Badge>}
+                        <span className="ml-auto text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                          View conversation →
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                )
+              })}
             </div>
           )}
         </Card>

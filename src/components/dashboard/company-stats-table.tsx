@@ -8,7 +8,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { getChannelLabel, timeAgo } from '@/lib/utils'
 import { createClient } from '@/lib/supabase-client'
 import type { ChannelType } from '@/types/database'
-import { ArrowUpDown, ChevronUp, ChevronDown, Calendar, X, Loader2 } from 'lucide-react'
+import { ArrowUpDown, ChevronUp, ChevronDown, ChevronRight, Calendar, X, Loader2, ExternalLink } from 'lucide-react'
 
 export interface CompanyPerformance {
   id: string
@@ -36,6 +36,7 @@ export function CompanyStatsTable({ stats }: Props) {
   const [specificDate, setSpecificDate] = useState('')
   const [dateFilteredStats, setDateFilteredStats] = useState<CompanyPerformance[] | null>(null)
   const [dateLoading, setDateLoading] = useState(false)
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
 
   // Fetch per-account stats for a specific date
   const fetchForDate = useCallback(async (date: string) => {
@@ -257,63 +258,117 @@ export function CompanyStatsTable({ stats }: Props) {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {sorted.map((s) => (
-          <TableRow key={s.id} className="cursor-pointer hover:bg-gray-50 transition-colors">
-            <TableCell>
-              <Link href={`/accounts/${s.id}`} className="flex items-center gap-2 font-medium text-gray-900 hover:text-teal-700">
-                {s.name}
-              </Link>
-              {s.gmail_address && (
-                <span className="text-xs text-gray-400 truncate max-w-[160px] block mt-0.5">{s.gmail_address}</span>
-              )}
-            </TableCell>
-            <TableCell>
-              <div className="flex items-center gap-1.5">
-                {(s as any)._hasEmail && (
-                  <span className="flex items-center gap-1 rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600">
-                    <ChannelIcon channel="email" size={10} /> Email
+        {sorted.map((s) => {
+          const isExpanded = expandedRow === s.name
+          return (
+            <>
+              <TableRow
+                key={s.id}
+                className="cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setExpandedRow(isExpanded ? null : s.name)}
+              >
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    {isExpanded
+                      ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                      : <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
+                    <div>
+                      <span className="font-medium text-gray-900">{s.name}</span>
+                      {s.gmail_address && (
+                        <span className="text-xs text-gray-400 truncate max-w-[160px] block mt-0.5">{s.gmail_address}</span>
+                      )}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    {(s as any)._hasEmail && (
+                      <span className="flex items-center gap-1 rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600">
+                        <ChannelIcon channel="email" size={10} /> Email
+                      </span>
+                    )}
+                    {(s as any)._hasTeams && (
+                      <span className="flex items-center gap-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-600">
+                        <ChannelIcon channel="teams" size={10} /> Teams
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <span className="font-semibold text-gray-900">{s.totalMessages}</span>
+                </TableCell>
+                <TableCell>
+                  <span className={`font-semibold ${s.pendingReplies > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                    {s.pendingReplies}
                   </span>
-                )}
-                {(s as any)._hasTeams && (
-                  <span className="flex items-center gap-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-600">
-                    <ChannelIcon channel="teams" size={10} /> Teams
+                </TableCell>
+                <TableCell>
+                  <span className={`font-semibold ${s.aiDraftsReady > 0 ? 'text-purple-600' : 'text-gray-400'}`}>{s.aiDraftsReady}</span>
+                </TableCell>
+                <TableCell>
+                  <span className="font-semibold text-teal-700">{s.aiRepliesSent}</span>
+                </TableCell>
+                <TableCell>
+                  <span className={`font-semibold ${getRateColor(s.responseRate)}`}>
+                    {s.responseRate}%
                   </span>
-                )}
-              </div>
-            </TableCell>
-            <TableCell>
-              <span className="font-semibold text-gray-900">{s.totalMessages}</span>
-            </TableCell>
-            <TableCell>
-              <span className={`font-semibold ${s.pendingReplies > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
-                {s.pendingReplies}
-              </span>
-            </TableCell>
-            <TableCell>
-              <span className={`font-semibold ${s.aiDraftsReady > 0 ? 'text-purple-600' : 'text-gray-400'}`}>{s.aiDraftsReady}</span>
-            </TableCell>
-            <TableCell>
-              <span className="font-semibold text-teal-700">{s.aiRepliesSent}</span>
-            </TableCell>
-            <TableCell>
-              <span className={`font-semibold ${getRateColor(s.responseRate)}`}>
-                {s.responseRate}%
-              </span>
-            </TableCell>
-            <TableCell>
-              {s.topCategory ? (
-                <Badge variant="default" size="sm">{s.topCategory}</Badge>
-              ) : (
-                <span className="text-xs text-gray-300">--</span>
+                </TableCell>
+                <TableCell>
+                  {s.topCategory ? (
+                    <Badge variant="default" size="sm">{s.topCategory}</Badge>
+                  ) : (
+                    <span className="text-xs text-gray-300">--</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <span className="text-sm text-gray-500">
+                    {s.lastActivity ? timeAgo(s.lastActivity) : '--'}
+                  </span>
+                </TableCell>
+              </TableRow>
+
+              {/* Expanded row with channel links */}
+              {isExpanded && (
+                <TableRow key={`${s.id}-expanded`} className="bg-gray-50/50">
+                  <TableCell colSpan={9}>
+                    <div className="flex items-center gap-3 py-1 pl-6">
+                      {(s as any)._hasEmail && (
+                        <Link
+                          href={`/inbox?channel=email`}
+                          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm hover:border-teal-300 hover:shadow-sm transition-all group"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ChannelIcon channel="email" size={14} />
+                          <span className="font-medium text-gray-700 group-hover:text-teal-700">View Email Inbox</span>
+                          <ExternalLink className="h-3 w-3 text-gray-300 group-hover:text-teal-500" />
+                        </Link>
+                      )}
+                      {(s as any)._hasTeams && (
+                        <Link
+                          href={`/inbox?channel=teams`}
+                          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm hover:border-teal-300 hover:shadow-sm transition-all group"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ChannelIcon channel="teams" size={14} />
+                          <span className="font-medium text-gray-700 group-hover:text-teal-700">View Teams Inbox</span>
+                          <ExternalLink className="h-3 w-3 text-gray-300 group-hover:text-teal-500" />
+                        </Link>
+                      )}
+                      <Link
+                        href={`/accounts/${s.id}`}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm hover:border-teal-300 hover:shadow-sm transition-all group"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="font-medium text-gray-700 group-hover:text-teal-700">Account Details</span>
+                        <ExternalLink className="h-3 w-3 text-gray-300 group-hover:text-teal-500" />
+                      </Link>
+                    </div>
+                  </TableCell>
+                </TableRow>
               )}
-            </TableCell>
-            <TableCell>
-              <span className="text-sm text-gray-500">
-                {s.lastActivity ? timeAgo(s.lastActivity) : '--'}
-              </span>
-            </TableCell>
-          </TableRow>
-        ))}
+            </>
+          )
+        })}
       </TableBody>
     </Table>
     </div>
