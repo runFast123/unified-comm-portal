@@ -34,7 +34,16 @@ import type { SyncStatus } from '@/types/database'
 import { useUser } from '@/context/user-context'
 import type { PdfReportData } from '@/lib/pdf-report'
 
-type ReportTab = 'overview' | 'channels' | 'categories' | 'ai-performance' | 'trends' | 'imported-data'
+import {
+  OverviewEnhancements,
+  AIPerformanceEnhancements,
+  TrendsEnhancements,
+  ConversationsTab,
+  SpamFiltersTab,
+} from '@/components/reports/advanced-analytics'
+import { MessageSquare, ShieldAlert } from 'lucide-react'
+
+type ReportTab = 'overview' | 'channels' | 'categories' | 'ai-performance' | 'trends' | 'conversations' | 'spam-filters' | 'imported-data'
 
 const tabs: { id: ReportTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
@@ -42,6 +51,8 @@ const tabs: { id: ReportTab; label: string; icon: React.ElementType }[] = [
   { id: 'categories', label: 'Categories', icon: Tag },
   { id: 'ai-performance', label: 'AI Performance', icon: Bot },
   { id: 'trends', label: 'Trends', icon: TrendingUp },
+  { id: 'conversations', label: 'Conversations', icon: MessageSquare },
+  { id: 'spam-filters', label: 'Spam & Filters', icon: ShieldAlert },
   { id: 'imported-data', label: 'Imported Data', icon: FileSpreadsheet },
 ]
 
@@ -675,6 +686,7 @@ export default function ReportsPage() {
 
       {/* Tab Content */}
       {activeTab === 'overview' && (
+        <>
         <div className="space-y-6">
           {/* Comparison summary cards */}
           {compareEnabled && (
@@ -723,6 +735,10 @@ export default function ReportsPage() {
             </ReportCard>
           </div>
         </div>
+
+        {/* Overview Enhancements: Conversation Health + Spam Detection */}
+        <OverviewEnhancements dateStart={getDateRangeStart(dateRange, customFrom)} />
+        </>
       )}
 
       {activeTab === 'channels' && (
@@ -871,6 +887,7 @@ export default function ReportsPage() {
       )}
 
       {activeTab === 'ai-performance' && aiMetrics && (
+        <>
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <MetricCard icon={CheckCircle2} iconColor="text-green-600" iconBg="bg-green-100"
@@ -907,9 +924,14 @@ export default function ReportsPage() {
             </div>
           </ReportCard>
         </div>
+
+        {/* AI Performance Enhancement: Reply Funnel */}
+        <AIPerformanceEnhancements dateStart={getDateRangeStart(dateRange, customFrom)} />
+        </>
       )}
 
       {activeTab === 'trends' && (
+        <>
         <div className="space-y-6">
           <ReportCard title="Daily Message Volume (Last 30 Days)" description="Total inbound messages per day">
             <TrendChart data={dailyVolume} valueKey="count" label="Messages" color="bg-teal-500" />
@@ -921,6 +943,20 @@ export default function ReportsPage() {
             <TrendChart data={dailyAiReplies} valueKey="count" label="AI Replies" color="bg-purple-500" />
           </ReportCard>
         </div>
+
+        {/* Trends Enhancement: Spam vs Real trend */}
+        <TrendsEnhancements />
+        </>
+      )}
+
+      {/* NEW: Conversations Tab */}
+      {activeTab === 'conversations' && (
+        <ConversationsTab />
+      )}
+
+      {/* NEW: Spam & Filters Tab */}
+      {activeTab === 'spam-filters' && (
+        <SpamFiltersTab dateStart={getDateRangeStart(dateRange, customFrom)} />
       )}
 
       {activeTab === 'imported-data' && (
