@@ -55,7 +55,7 @@ return [{ json: { trigger: true } }];`,
         id: 'glp1',
       },
 
-      // 2b. Fetch own user ID (only if not cached)
+      // 2b. Fetch own user ID + org tenant ID
       {
         parameters: {
           method: 'GET',
@@ -74,17 +74,41 @@ return [{ json: { trigger: true } }];`,
         },
       },
 
-      // 2c. Cache user ID in static data
+      // 2c. Get organization tenant ID (to identify all internal users)
+      {
+        parameters: {
+          method: 'GET',
+          url: 'https://graph.microsoft.com/v1.0/organization?$select=id',
+          authentication: 'predefinedCredentialType',
+          nodeCredentialType: 'microsoftTeamsOAuth2Api',
+          options: {},
+        },
+        name: 'Get Org Tenant',
+        type: 'n8n-nodes-base.httpRequest',
+        typeVersion: 4.2,
+        position: [420, 560],
+        id: 'got1',
+        credentials: {
+          microsoftTeamsOAuth2Api: { id: TEAMS_CRED_ID, name: TEAMS_CRED_NAME },
+        },
+      },
+
+      // 2d. Cache user ID + tenant ID in static data
       {
         parameters: {
           jsCode: `const staticData = $getWorkflowStaticData('global');
-const meData = $input.first().json;
+const meData = $('Get My User ID').first().json;
+const orgData = $('Get Org Tenant').first().json;
 if (meData.id) {
   staticData.myUserId = meData.id;
   staticData.myDisplayName = meData.displayName || '';
 }
+// Get org tenant ID to identify all internal users
+if (orgData.value && orgData.value[0]) {
+  staticData.orgTenantId = orgData.value[0].id || '';
+}
 const lastPoll = staticData.lastPollTime || new Date(Date.now() - 2 * 60 * 1000).toISOString();
-return [{ json: { lastPollTime: lastPoll, myUserId: staticData.myUserId || '', myDisplayName: staticData.myDisplayName || '' } }];`,
+return [{ json: { lastPollTime: lastPoll, myUserId: staticData.myUserId || '', myDisplayName: staticData.myDisplayName || '', orgTenantId: staticData.orgTenantId || '' } }];`,
         },
         name: 'Cache My User ID',
         type: 'n8n-nodes-base.code',
@@ -176,7 +200,7 @@ return activeChats.map(c => ({ json: c }));`,
           jsCode: `const pollData = $('Cache My User ID').first().json;
 const lastPollMs = new Date(pollData.lastPollTime).getTime();
 const myUserId = pollData.myUserId || '';
-const myDisplayName = pollData.myDisplayName || '';
+const orgTenantId = pollData.orgTenantId || '';
 const chatId = $('Filter Active Chats').item.json.chatId;
 const chatType = $('Filter Active Chats').item.json.chatType;
 const topic = $('Filter Active Chats').item.json.topic;
@@ -209,10 +233,11 @@ for (const msg of messages) {
 
   if (!text || text.length < 2) continue;
 
-  // Detect if this message is from the agent (our own user)
+  // Detect if this message is from an internal user (same org tenant = agent)
   const senderUserId = msg.from?.user?.id || '';
-  const senderName = msg.from?.user?.displayName || msg.from?.displayName || '';
-  const isAgent = (myUserId && senderUserId === myUserId) || (myDisplayName && senderName === myDisplayName);
+  const senderTenantId = msg.from?.user?.tenantId || '';
+  // Agent if: same user as API user, OR same tenant as our organization
+  const isAgent = (myUserId && senderUserId === myUserId) || (orgTenantId && senderTenantId === orgTenantId);
 
   results.push({
     account_id: '${accountId}',
@@ -279,7 +304,8 @@ return [{ json: { updated: true, lastPollTime: staticData.lastPollTime } }];`,
     connections: {
       'Every 1 Minute': { main: [[{ node: 'Get Last Poll Time', type: 'main', index: 0 }]] },
       'Get Last Poll Time': { main: [[{ node: 'Get My User ID', type: 'main', index: 0 }]] },
-      'Get My User ID': { main: [[{ node: 'Cache My User ID', type: 'main', index: 0 }]] },
+      'Get My User ID': { main: [[{ node: 'Get Org Tenant', type: 'main', index: 0 }]] },
+      'Get Org Tenant': { main: [[{ node: 'Cache My User ID', type: 'main', index: 0 }]] },
       'Cache My User ID': { main: [[{ node: 'List All Chats', type: 'main', index: 0 }]] },
       'List All Chats': { main: [[{ node: 'Filter Active Chats', type: 'main', index: 0 }]] },
       'Filter Active Chats': { main: [[{ node: 'Fetch Chat Messages', type: 'main', index: 0 }]] },
