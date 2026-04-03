@@ -30,6 +30,143 @@ import { EmptyState } from '@/components/ui/empty-state'
 import type { KBArticle } from '@/types/database'
 import { cn, truncate, timeAgo } from '@/lib/utils'
 import { useUser } from '@/context/user-context'
+import Link from 'next/link'
+import { useToast } from '@/components/ui/toast'
+
+function GapCount() {
+  const [count, setCount] = useState<number | null>(null)
+  useEffect(() => {
+    async function fetch() {
+      const supabase = createClient()
+      const { count: c } = await supabase
+        .from('message_classifications')
+        .select('message_id', { count: 'exact', head: true })
+        .lt('confidence', 0.6)
+      setCount(c || 0)
+    }
+    fetch()
+  }, [])
+  return <p className="text-2xl font-bold text-gray-900">{count ?? '...'}</p>
+}
+
+// ─── Gap Analysis Component ──────────────────────────────────────────────────
+
+function GapAnalysis() {
+  const [gaps, setGaps] = useState<{
+    id: string
+    message_text: string
+    category: string | null
+    confidence: number
+    sender_name: string | null
+    account_name: string | null
+    conversation_id: string | null
+    timestamp: string
+  }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchGaps() {
+      setLoading(true)
+      const supabase = createClient()
+
+      // Find messages with LOW AI classification confidence (< 0.6) — these are KB gaps
+      const { data } = await supabase
+        .from('message_classifications')
+        .select(`
+          message_id,
+          category,
+          confidence,
+          classified_at,
+          messages!inner (
+            id,
+            message_text,
+            sender_name,
+            conversation_id,
+            timestamp,
+            is_spam,
+            accounts!messages_account_id_fkey ( name )
+          )
+        `)
+        .lt('confidence', 0.6)
+        .order('classified_at', { ascending: false })
+        .limit(20)
+
+      const mapped = (data || [])
+        .filter((d: any) => !d.messages?.is_spam)
+        .map((d: any) => ({
+          id: d.message_id,
+          message_text: d.messages?.message_text || '',
+          category: d.category,
+          confidence: d.confidence,
+          sender_name: d.messages?.sender_name || null,
+          account_name: d.messages?.accounts?.name?.replace(/\s+Teams$/i, '') || null,
+          conversation_id: d.messages?.conversation_id || null,
+          timestamp: d.messages?.timestamp || d.classified_at,
+        }))
+
+      setGaps(mapped)
+      setLoading(false)
+    }
+    fetchGaps()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
+  if (gaps.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+        <CheckCircle2 className="h-10 w-10 mb-2 text-green-400" />
+        <p className="text-sm font-medium text-gray-500">No knowledge gaps detected</p>
+        <p className="text-xs text-gray-400 mt-1">
+          All AI classifications have high confidence. Your KB coverage is solid.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
+      {gaps.map((gap) => (
+        <Link
+          key={gap.id}
+          href={gap.conversation_id ? `/conversations/${gap.conversation_id}` : '#'}
+          className="flex items-start gap-3 py-3 px-1 hover:bg-gray-50 rounded-lg transition-colors group"
+        >
+          {/* Confidence indicator */}
+          <div className={cn(
+            'flex h-9 w-9 items-center justify-center rounded-lg text-xs font-bold shrink-0 mt-0.5',
+            gap.confidence < 0.3 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+          )}>
+            {Math.round(gap.confidence * 100)}%
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-gray-800 line-clamp-2 group-hover:text-teal-700 transition-colors">
+              {gap.message_text.substring(0, 150)}{gap.message_text.length > 150 ? '...' : ''}
+            </p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {gap.category && (
+                <Badge variant="default" size="sm">{gap.category}</Badge>
+              )}
+              {gap.account_name && (
+                <span className="text-xs text-gray-400">{gap.account_name}</span>
+              )}
+              <span className="text-xs text-gray-400">{timeAgo(gap.timestamp)}</span>
+            </div>
+          </div>
+
+          <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-1" />
+        </Link>
+      ))}
+    </div>
+  )
+}
 
 const supabase = createClient()
 
@@ -399,7 +536,7 @@ export default function KnowledgeBasePage() {
             </div>
             <div>
               <p className="text-sm text-gray-500">Gap Analysis</p>
-              <p className="text-2xl font-bold text-gray-900">0</p>
+              <GapCount />
             </div>
           </div>
         </Card>
@@ -556,14 +693,8 @@ export default function KnowledgeBasePage() {
       {/* ----------------------------------------------------------------- */}
       {/* Gap Analysis section                                              */}
       {/* ----------------------------------------------------------------- */}
-      <Card title="Gap Analysis" description="Recent questions where the AI had no good KB match">
-        <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-          <Inbox className="h-10 w-10 mb-2" />
-          <p className="text-sm font-medium text-gray-500">No knowledge gaps detected yet</p>
-          <p className="text-xs text-gray-400 mt-1">
-            Gaps will appear here when the AI encounters questions it cannot confidently answer.
-          </p>
-        </div>
+      <Card title="Gap Analysis" description="Messages where AI had low confidence — potential KB gaps to fill">
+        <GapAnalysis />
       </Card>
 
       {/* ----------------------------------------------------------------- */}
