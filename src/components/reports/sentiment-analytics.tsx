@@ -94,7 +94,7 @@ interface CompanySentiment {
   score: number // -100 to +100
   trend: 'improving' | 'stable' | 'declining'
   atRiskConversations: number
-  messages: { sentiment: string; preview: string }[]
+  messages: { sentiment: string; preview: string; channel?: string }[]
 }
 
 interface SentimentByDay {
@@ -172,7 +172,7 @@ interface ChannelSentiment {
   negative: number
   total: number
   score: number
-  messages: { sentiment: string; preview: string }[]
+  messages: { sentiment: string; preview: string; channel?: string }[]
 }
 
 export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
@@ -257,7 +257,7 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
       }))
 
       // --- Company-wise breakdown ---
-      const companyMap: Record<string, { accountId: string; pos: number; neu: number; neg: number; total: number; recentSentiments: { sentiment: string; time: string }[]; messages: { sentiment: string; preview: string }[] }> = {}
+      const companyMap: Record<string, { accountId: string; pos: number; neu: number; neg: number; total: number; recentSentiments: { sentiment: string; time: string }[]; messages: { sentiment: string; preview: string; channel?: string }[] }> = {}
       const convNegCount: Record<string, { count: number; participantName: string; accountName: string; channel: string; lastNeg: string }> = {}
 
       classifications.forEach((c: any) => {
@@ -274,7 +274,7 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
         else if (c.sentiment === 'negative') co.neg++
         else co.neu++
         co.recentSentiments.push({ sentiment: c.sentiment, time: c.classified_at })
-        co.messages.push({ sentiment: c.sentiment, preview: (c.messages?.sender_name?.replace(/<[^>]+>/g, '').trim() || '') + ': ' + (c.messages?.message_text || '').substring(0, 100) })
+        co.messages.push({ sentiment: c.sentiment, preview: (c.messages?.sender_name?.replace(/<[^>]+>/g, '').trim() || '') + ': ' + (c.messages?.message_text || '').substring(0, 100), channel: c.messages?.channel || 'email' })
 
         // Track at-risk conversations (2+ negative messages)
         if (c.sentiment === 'negative' && convId) {
@@ -516,10 +516,19 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
       </ReportCard>
 
       {/* Company-wise Sentiment Breakdown */}
-      <ReportCard title="Sentiment by Company" description="Sorted by worst score first — companies needing attention at the top">
+      <ReportCard title={`Sentiment by Company${channelFilter !== 'all' ? ` (${channelFilter})` : ''}`} description="Sorted by worst score first — companies needing attention at the top">
         <div className="space-y-3">
-          {companies.map((co) => (
-            <div key={co.accountName} className="rounded-xl border border-gray-200 p-4 hover:border-teal-300 hover:shadow-sm transition-all cursor-pointer" onClick={() => setModalData({ title: `${co.accountName} — Sentiment Details`, messages: co.messages })}>
+          {companies.map((co) => {
+            // Filter messages by selected channel
+            const filteredMsgs = channelFilter === 'all' ? co.messages : co.messages.filter(m => m.channel === channelFilter)
+            if (filteredMsgs.length === 0) return null
+            const fPos = filteredMsgs.filter(m => m.sentiment === 'positive').length
+            const fNeu = filteredMsgs.filter(m => m.sentiment === 'neutral').length
+            const fNeg = filteredMsgs.filter(m => m.sentiment === 'negative').length
+            const fTotal = filteredMsgs.length
+            const fScore = fTotal > 0 ? Math.round(((fPos - fNeg) / fTotal) * 100) : 0
+            return (
+            <div key={co.accountName} className="rounded-xl border border-gray-200 p-4 hover:border-teal-300 hover:shadow-sm transition-all cursor-pointer" onClick={() => setModalData({ title: `${co.accountName}${channelFilter !== 'all' ? ` (${channelFilter})` : ''} — Sentiment Details`, messages: filteredMsgs })}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-gray-800">{co.accountName}</span>
@@ -538,8 +547,8 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={cn('text-lg font-bold', co.score >= 20 ? 'text-green-600' : co.score >= -20 ? 'text-gray-600' : 'text-red-600')}>
-                    {co.score > 0 ? '+' : ''}{co.score}
+                  <span className={cn('text-lg font-bold', fScore >= 20 ? 'text-green-600' : fScore >= -20 ? 'text-gray-600' : 'text-red-600')}>
+                    {fScore > 0 ? '+' : ''}{fScore}
                   </span>
                   <span className="text-xs text-gray-400">/ 100</span>
                 </div>
@@ -547,18 +556,19 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
 
               {/* Sentiment bar */}
               <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden bg-gray-100">
-                {co.positive > 0 && <div className="h-full bg-green-500 transition-all rounded-l-full" style={{ width: `${(co.positive / co.total) * 100}%` }} />}
-                {co.neutral > 0 && <div className="h-full bg-gray-300 transition-all" style={{ width: `${(co.neutral / co.total) * 100}%` }} />}
-                {co.negative > 0 && <div className="h-full bg-red-400 transition-all rounded-r-full" style={{ width: `${(co.negative / co.total) * 100}%` }} />}
+                {fPos > 0 && <div className="h-full bg-green-500 transition-all rounded-l-full" style={{ width: `${(fPos / fTotal) * 100}%` }} />}
+                {fNeu > 0 && <div className="h-full bg-gray-300 transition-all" style={{ width: `${(fNeu / fTotal) * 100}%` }} />}
+                {fNeg > 0 && <div className="h-full bg-red-400 transition-all rounded-r-full" style={{ width: `${(fNeg / fTotal) * 100}%` }} />}
               </div>
               <div className="flex justify-between text-[10px] text-gray-500 mt-1">
-                <span>{co.positive} positive ({co.total > 0 ? Math.round((co.positive / co.total) * 100) : 0}%)</span>
-                <span>{co.neutral} neutral</span>
-                <span>{co.negative} negative ({co.total > 0 ? Math.round((co.negative / co.total) * 100) : 0}%)</span>
+                <span>{fPos} positive ({fTotal > 0 ? Math.round((fPos / fTotal) * 100) : 0}%)</span>
+                <span>{fNeu} neutral</span>
+                <span>{fNeg} negative ({fTotal > 0 ? Math.round((fNeg / fTotal) * 100) : 0}%)</span>
               </div>
               <p className="text-[10px] text-teal-600 text-center mt-1">Click to view messages</p>
             </div>
-          ))}
+            )
+          })}
           {companies.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-6">No sentiment data available for this period.</p>
           )}
