@@ -281,7 +281,7 @@ export default async function ConversationPage({
                   )}
                 </div>
                 {/* Conversation timer */}
-                <div className="flex items-center gap-3 text-[10px] text-gray-400 mt-0.5">
+                <div className="flex items-center gap-3 text-[10px] text-gray-400 mt-0.5 flex-wrap">
                   {firstMsgAt && <span>Active {formatDuration(activeDurationMs)}</span>}
                   {lastMsgAt && <span>&middot; Last reply {formatDuration(lastReplyMs)} ago</span>}
                   <span>&middot; {messageCount} messages ({inboundCount} inbound)</span>

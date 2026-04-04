@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Search,
   Info,
+  Eye,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -70,6 +71,7 @@ export function ConversationActions({
     } catch { /* non-critical */ }
   }, [conversationId, supabaseRef])
   const [showManualReply, setShowManualReply] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
   const [showEditReply, setShowEditReply] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [manualText, setManualText] = useState('')
@@ -649,6 +651,19 @@ export function ConversationActions({
       {/* Reply compose areas */}
       {showManualReply && (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+          {/* Reply preview */}
+          {showPreview && manualText.trim() && (
+            <div className="rounded-lg border border-teal-200 bg-white p-4 space-y-2">
+              <div className="flex items-center gap-2 text-xs text-teal-600 font-medium">
+                <Eye size={12} />
+                Preview — How the customer will see this
+              </div>
+              <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap border-l-3 border-teal-300 pl-3">
+                {manualText}
+              </div>
+              <p className="text-[10px] text-gray-400">From: {accountName}</p>
+            </div>
+          )}
           <div className="relative">
             <textarea
               ref={manualTextareaRef}
@@ -699,6 +714,9 @@ export function ConversationActions({
           <div className="flex gap-2 justify-end">
             <Button size="sm" variant="ghost" onClick={() => { setShowManualReply(false); setShortcutQuery(null) }}>
               <X size={14} /> Cancel
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setShowPreview(!showPreview)}>
+              <Eye size={14} /> {showPreview ? 'Hide Preview' : 'Preview'}
             </Button>
             <Button size="sm" variant="primary" onClick={handleManualReply} disabled={loading === 'manual'}>
               {loading === 'manual' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

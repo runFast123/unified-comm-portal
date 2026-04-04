@@ -110,6 +110,24 @@ function renderAttachments(attachments: unknown) {
           const size = att.size
           const url = att.url || (att.data ? `data:${mime};base64,${att.data}` : '')
 
+          const isImage = mime.startsWith('image/') || ['png','jpg','jpeg','gif','webp','svg'].includes((name.split('.').pop() || '').toLowerCase())
+
+          // Inline image preview
+          if (isImage && url) {
+            return (
+              <div key={i} className="rounded-lg border border-gray-200 bg-white overflow-hidden hover:shadow-sm transition-all">
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  <img src={url} alt={name} className="max-h-48 w-auto rounded-t-lg object-contain bg-gray-50" loading="lazy" />
+                </a>
+                <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500">
+                  <FileImage className="h-3 w-3" />
+                  <span className="truncate">{name}</span>
+                  {size ? <span className="shrink-0">{formatFileSize(size)}</span> : null}
+                </div>
+              </div>
+            )
+          }
+
           return (
             <div
               key={i}
@@ -242,8 +260,11 @@ function formatEmailBody(text: string | null): React.ReactNode {
       <div className="space-y-0.5">{formattedParts}</div>
       {quotedLines.length > 0 && (
         <details className="mt-3 group">
-          <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
-            <span className="group-open:hidden">Show quoted text ({quotedLines.length} lines)</span>
+          <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 rounded-md hover:bg-gray-100 px-2 py-1 -mx-2 transition-colors">
+            <span className="group-open:hidden">
+              &ldquo;{quotedLines[0]?.substring(0, 80)}{quotedLines[0]?.length > 80 ? '...' : ''}&rdquo;
+              <span className="ml-1 text-gray-300">+{quotedLines.length} lines</span>
+            </span>
             <span className="hidden group-open:inline">Hide quoted text</span>
           </summary>
           <div className="mt-2 border-l-2 border-gray-200 pl-3 text-xs text-gray-400 whitespace-pre-wrap max-h-[200px] overflow-y-auto">
