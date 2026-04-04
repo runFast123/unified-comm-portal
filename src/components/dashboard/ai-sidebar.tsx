@@ -203,51 +203,65 @@ function SentimentSection({ trendLabel, trendColor, TrendIcon, trend, posCount, 
         <p className="text-[10px] text-teal-600 text-center">Click to see message details</p>
       </button>
 
-      {/* Floating detail window */}
+      {/* Floating table window — overlay, not inline */}
       {showDetails && (
-        <div className="border-t border-gray-100 bg-gray-50/50 p-3 space-y-3 max-h-80 overflow-y-auto">
-          {posCount > 0 && (
-            <div>
-              <p className="text-[10px] font-bold text-green-700 mb-1.5 flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-green-500" /> Positive Messages ({posCount})
-              </p>
-              <div className="space-y-1">
-                {sentimentHistory.filter(s => s.sentiment === 'positive').map((s, i) => (
-                  <div key={`p${i}`} className="rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-xs text-green-800 leading-relaxed">
-                    {s.preview}
-                  </div>
-                ))}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowDetails(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-[500px] max-w-[90vw] max-h-[70vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+              <h3 className="text-sm font-bold text-gray-800">Sentiment Analysis Details</h3>
+              <button onClick={() => setShowDetails(false)} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-y-auto max-h-[55vh]">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="text-left px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase w-24">Sentiment</th>
+                    <th className="text-left px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase">Message</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {sentimentHistory.map((s, i) => (
+                    <tr key={i} className={cn(
+                      'transition-colors',
+                      s.sentiment === 'positive' ? 'hover:bg-green-50' : s.sentiment === 'negative' ? 'hover:bg-red-50' : 'hover:bg-gray-50'
+                    )}>
+                      <td className="px-5 py-3">
+                        <span className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
+                          s.sentiment === 'positive' ? 'bg-green-100 text-green-700' :
+                          s.sentiment === 'negative' ? 'bg-red-100 text-red-700' :
+                          'bg-gray-100 text-gray-600'
+                        )}>
+                          <span className={cn('h-2 w-2 rounded-full',
+                            s.sentiment === 'positive' ? 'bg-green-500' : s.sentiment === 'negative' ? 'bg-red-500' : 'bg-gray-400'
+                          )} />
+                          {s.sentiment === 'positive' ? 'Positive' : s.sentiment === 'negative' ? 'Negative' : 'Neutral'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-xs text-gray-700 leading-relaxed">
+                        {s.preview}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer summary */}
+            <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
+              <span>{total} messages total</span>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> {posCount}</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-gray-400" /> {neuCount}</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> {negCount}</span>
               </div>
             </div>
-          )}
-          {negCount > 0 && (
-            <div>
-              <p className="text-[10px] font-bold text-red-700 mb-1.5 flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Negative Messages ({negCount})
-              </p>
-              <div className="space-y-1">
-                {sentimentHistory.filter(s => s.sentiment === 'negative').map((s, i) => (
-                  <div key={`n${i}`} className="rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-800 leading-relaxed">
-                    {s.preview}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {neuCount > 0 && (
-            <div>
-              <p className="text-[10px] font-bold text-gray-600 mb-1.5 flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full bg-gray-400" /> Neutral Messages ({neuCount})
-              </p>
-              <div className="space-y-1">
-                {sentimentHistory.filter(s => s.sentiment === 'neutral').map((s, i) => (
-                  <div key={`u${i}`} className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-xs text-gray-700 leading-relaxed">
-                    {s.preview}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>
