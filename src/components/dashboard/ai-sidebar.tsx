@@ -151,87 +151,103 @@ function FormattedDraft({ text }: { text: string }) {
   return <div className="space-y-0.5">{elements}</div>
 }
 
-function SentimentBar({ posCount, neuCount, negCount, total, sentimentHistory }: {
+function SentimentSection({ trendLabel, trendColor, TrendIcon, trend, posCount, neuCount, negCount, total, sentimentHistory }: {
+  trendLabel: string; trendColor: string; TrendIcon: React.ElementType; trend: number
   posCount: number; neuCount: number; negCount: number; total: number; sentimentHistory: SentimentPoint[]
 }) {
   const [showDetails, setShowDetails] = useState(false)
 
   return (
-    <div className="relative">
-      {/* Clickable bar */}
+    <div className="rounded-xl border border-gray-200 bg-white overflow-visible">
+      {/* Clickable header + bar — entire section is one click target */}
       <button
         onClick={() => setShowDetails(!showDetails)}
-        className="w-full text-left"
-        title="Click to see message details"
+        className={cn(
+          'w-full text-left p-3 space-y-3 rounded-xl transition-all cursor-pointer',
+          showDetails ? 'ring-2 ring-teal-400 ring-offset-1' : 'hover:bg-gray-50'
+        )}
       >
-        <div className={cn('flex items-center gap-1 h-4 rounded-full overflow-hidden bg-gray-100 cursor-pointer ring-offset-1 transition-all', showDetails && 'ring-2 ring-teal-400')}>
-          {posCount > 0 && <div className="h-full bg-green-500" style={{ width: `${(posCount / total) * 100}%` }} />}
-          {neuCount > 0 && <div className="h-full bg-gray-400" style={{ width: `${(neuCount / total) * 100}%` }} />}
-          {negCount > 0 && <div className="h-full bg-red-500" style={{ width: `${(negCount / total) * 100}%` }} />}
+        {/* Title */}
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-gray-400" />
+          <span className="text-sm font-semibold text-gray-800 flex-1">Customer Sentiment</span>
+          <ChevronDown className={cn('h-4 w-4 text-gray-400 transition-transform', showDetails && 'rotate-180')} />
         </div>
-        <div className="flex justify-between text-[10px] text-gray-500 mt-1">
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> {posCount} positive</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-gray-400" /> {neuCount} neutral</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> {negCount} negative</span>
+
+        {/* Trend indicator */}
+        <div className={cn('flex items-center gap-2 rounded-lg px-3 py-2', trend < -0.3 ? 'bg-red-50 border border-red-200' : trend > 0.3 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200')}>
+          <TrendIcon className={cn('h-5 w-5', trendColor)} />
+          <div>
+            <p className={cn('text-sm font-semibold', trendColor)}>{trendLabel}</p>
+            <p className="text-xs text-gray-500">{total} messages analyzed</p>
+          </div>
+          {trend < -0.3 && (
+            <Badge variant="danger" size="sm" className="ml-auto">At Risk</Badge>
+          )}
         </div>
+
+        {/* Sentiment bar */}
+        <div>
+          <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden bg-gray-100">
+            {posCount > 0 && <div className="h-full bg-green-500" style={{ width: `${(posCount / total) * 100}%` }} />}
+            {neuCount > 0 && <div className="h-full bg-gray-400" style={{ width: `${(neuCount / total) * 100}%` }} />}
+            {negCount > 0 && <div className="h-full bg-red-500" style={{ width: `${(negCount / total) * 100}%` }} />}
+          </div>
+          <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> {posCount} positive</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-gray-400" /> {neuCount} neutral</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> {negCount} negative</span>
+          </div>
+        </div>
+
+        <p className="text-[10px] text-teal-600 text-center">Click to see message details</p>
       </button>
 
-      {/* Floating window — toggled on click */}
+      {/* Floating detail window */}
       {showDetails && (
-        <div className="absolute left-0 right-0 top-full mt-2 z-30 animate-in slide-in-from-top-2 fade-in duration-200">
-          <div className="rounded-xl bg-white border border-gray-200 shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-100">
-              <p className="text-[11px] font-semibold text-gray-600">Sentiment Details</p>
-              <button onClick={() => setShowDetails(false)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+        <div className="border-t border-gray-100 bg-gray-50/50 p-3 space-y-3 max-h-80 overflow-y-auto">
+          {posCount > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-green-700 mb-1.5 flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-full bg-green-500" /> Positive Messages ({posCount})
+              </p>
+              <div className="space-y-1">
+                {sentimentHistory.filter(s => s.sentiment === 'positive').map((s, i) => (
+                  <div key={`p${i}`} className="rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-xs text-green-800 leading-relaxed">
+                    {s.preview}
+                  </div>
+                ))}
+              </div>
             </div>
-
-            {/* Content */}
-            <div className="p-3 space-y-3 max-h-72 overflow-y-auto">
-              {posCount > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold text-green-700 mb-1.5 flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-full bg-green-500" /> Positive Messages ({posCount})
-                  </p>
-                  <div className="space-y-1">
-                    {sentimentHistory.filter(s => s.sentiment === 'positive').map((s, i) => (
-                      <div key={`p${i}`} className="rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-xs text-green-800 leading-relaxed">
-                        {s.preview}
-                      </div>
-                    ))}
+          )}
+          {negCount > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-red-700 mb-1.5 flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Negative Messages ({negCount})
+              </p>
+              <div className="space-y-1">
+                {sentimentHistory.filter(s => s.sentiment === 'negative').map((s, i) => (
+                  <div key={`n${i}`} className="rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-800 leading-relaxed">
+                    {s.preview}
                   </div>
-                </div>
-              )}
-              {negCount > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold text-red-700 mb-1.5 flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Negative Messages ({negCount})
-                  </p>
-                  <div className="space-y-1">
-                    {sentimentHistory.filter(s => s.sentiment === 'negative').map((s, i) => (
-                      <div key={`n${i}`} className="rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-800 leading-relaxed">
-                        {s.preview}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {neuCount > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold text-gray-600 mb-1.5 flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-full bg-gray-400" /> Neutral Messages ({neuCount})
-                  </p>
-                  <div className="space-y-1">
-                    {sentimentHistory.filter(s => s.sentiment === 'neutral').map((s, i) => (
-                      <div key={`u${i}`} className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-xs text-gray-700 leading-relaxed">
-                        {s.preview}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+          {neuCount > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-gray-600 mb-1.5 flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-full bg-gray-400" /> Neutral Messages ({neuCount})
+              </p>
+              <div className="space-y-1">
+                {sentimentHistory.filter(s => s.sentiment === 'neutral').map((s, i) => (
+                  <div key={`u${i}`} className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-xs text-gray-700 leading-relaxed">
+                    {s.preview}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -462,30 +478,17 @@ export function AISidebar({
         const neuCount = sentimentValues.filter(v => v === 0).length
 
         return (
-          <SidebarSection title="Customer Sentiment" icon={TrendingUp} defaultOpen={true}>
-            <div className="space-y-3">
-              {/* Trend indicator */}
-              <div className={cn('flex items-center gap-2 rounded-lg px-3 py-2', trend < -0.3 ? 'bg-red-50 border border-red-200' : trend > 0.3 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200')}>
-                <TrendIcon className={cn('h-5 w-5', trendColor)} />
-                <div>
-                  <p className={cn('text-sm font-semibold', trendColor)}>{trendLabel}</p>
-                  <p className="text-xs text-gray-500">{sentimentHistory.length} messages analyzed</p>
-                </div>
-                {trend < -0.3 && (
-                  <Badge variant="danger" size="sm" className="ml-auto">At Risk</Badge>
-                )}
-              </div>
-
-              {/* Sentiment breakdown bar — clickable to show/hide message details */}
-              <SentimentBar
-                posCount={posCount}
-                neuCount={neuCount}
-                negCount={negCount}
-                total={sentimentValues.length}
-                sentimentHistory={sentimentHistory}
-              />
-            </div>
-          </SidebarSection>
+          <SentimentSection
+            trendLabel={trendLabel}
+            trendColor={trendColor}
+            TrendIcon={TrendIcon}
+            trend={trend}
+            posCount={posCount}
+            neuCount={neuCount}
+            negCount={negCount}
+            total={sentimentValues.length}
+            sentimentHistory={sentimentHistory}
+          />
         )
       })()}
 
