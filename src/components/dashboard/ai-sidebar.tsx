@@ -302,6 +302,17 @@ export function AISidebar({
 
   return (
     <div className="space-y-3">
+      {/* Conversation Summary */}
+      {classification?.topic_summary && (
+        <div className="rounded-xl bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 p-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Sparkles className="h-4 w-4 text-teal-600" />
+            <span className="text-xs font-bold text-teal-800 uppercase tracking-wider">Summary</span>
+          </div>
+          <p className="text-sm text-teal-900 leading-relaxed">{classification.topic_summary}</p>
+        </div>
+      )}
+
       {/* Classification card */}
       {classification && (
         <SidebarSection title="AI Classification" icon={Brain}>

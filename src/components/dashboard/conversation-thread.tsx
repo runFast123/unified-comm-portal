@@ -406,14 +406,44 @@ function WhatsAppBubble({ message, isOutbound }: { message: Message; isOutbound:
 
 export function ConversationThread({ messages, channel }: ConversationThreadProps) {
   let lastDate = ''
+  let prevDirection: string | null = null
+  let prevTimestamp: string | null = null
 
   return (
     <div className="space-y-4 py-4">
-      {messages.map(message => {
+      {messages.map((message, idx) => {
         const isOutbound = message.direction === 'outbound'
         const msgDate = formatDate(message.timestamp)
         const showDateSep = msgDate !== lastDate
         lastDate = msgDate
+
+        // Response time indicator — show when direction changes (customer→agent or agent→customer)
+        let responseTimeIndicator: React.ReactNode = null
+        if (prevDirection && prevDirection !== message.direction && prevTimestamp) {
+          const gapMs = new Date(message.timestamp).getTime() - new Date(prevTimestamp).getTime()
+          if (gapMs > 60000) { // Only show if gap > 1 minute
+            const gapMins = Math.floor(gapMs / 60000)
+            let gapText = ''
+            if (gapMins < 60) gapText = `${gapMins}m`
+            else if (gapMins < 1440) gapText = `${Math.floor(gapMins / 60)}h ${gapMins % 60}m`
+            else gapText = `${Math.floor(gapMins / 1440)}d ${Math.floor((gapMins % 1440) / 60)}h`
+
+            const isAgentReply = message.direction === 'outbound'
+            const label = isAgentReply ? `Agent replied in ${gapText}` : `Customer replied after ${gapText}`
+            const gapColor = gapMins < 60 ? 'text-green-500 bg-green-50 border-green-200' : gapMins < 240 ? 'text-amber-500 bg-amber-50 border-amber-200' : 'text-red-500 bg-red-50 border-red-200'
+
+            responseTimeIndicator = (
+              <div className="flex justify-center py-1">
+                <span className={cn('inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-[10px] font-medium border', gapColor)}>
+                  <Clock size={10} />
+                  {label}
+                </span>
+              </div>
+            )
+          }
+        }
+        prevDirection = message.direction
+        prevTimestamp = message.timestamp
 
         return (
           <div key={message.id}>
@@ -424,6 +454,8 @@ export function ConversationThread({ messages, channel }: ConversationThreadProp
                 <div className="h-px flex-1 bg-gray-200" />
               </div>
             )}
+
+            {responseTimeIndicator}
 
             {channel === 'email' && (
               <EmailMessage message={message} isOutbound={isOutbound} />

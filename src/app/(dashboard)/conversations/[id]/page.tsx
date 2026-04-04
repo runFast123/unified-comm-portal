@@ -8,6 +8,7 @@ import { MarkRead } from '@/components/dashboard/mark-read'
 import { ConversationRealtime } from '@/components/dashboard/conversation-realtime'
 import { AISidebar } from '@/components/dashboard/ai-sidebar'
 import { ConversationActions } from '@/components/dashboard/conversation-actions'
+import { SuggestedReplies } from '@/components/dashboard/suggested-replies'
 import { StatusDropdown } from '@/components/dashboard/status-dropdown'
 import { AgentAssignment } from '@/components/dashboard/agent-assignment'
 import { InternalNotes } from '@/components/dashboard/internal-notes'
@@ -203,6 +204,33 @@ export default async function ConversationPage({
   const firstInboundMsg = (messages || []).find((m: any) => m.direction === 'inbound')
   const emailSubject = firstInboundMsg?.email_subject || null
 
+  // Contact info: count total conversations for this participant
+  let totalConversations = 1
+  if (conversation.participant_email) {
+    const { count } = await supabase
+      .from('conversations')
+      .select('id', { count: 'exact', head: true })
+      .eq('participant_email', conversation.participant_email)
+    totalConversations = count || 1
+  }
+
+  // Conversation timer
+  const firstMsgAt = conversation.first_message_at as string | null
+  const lastMsgAt = conversation.last_message_at as string | null
+  const now = Date.now()
+  const activeDurationMs = firstMsgAt ? now - new Date(firstMsgAt).getTime() : 0
+  const lastReplyMs = lastMsgAt ? now - new Date(lastMsgAt).getTime() : 0
+  const formatDuration = (ms: number) => {
+    const mins = Math.floor(ms / 60000)
+    if (mins < 60) return `${mins}m`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ${mins % 60}m`
+    const days = Math.floor(hrs / 24)
+    return `${days}d ${hrs % 24}h`
+  }
+  const messageCount = (messages || []).length
+  const inboundCount = (messages || []).filter((m: any) => m.direction === 'inbound').length
+
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       {/* Conversation header */}
@@ -236,7 +264,7 @@ export default async function ConversationPage({
                     currentAssignedName={assignedUser?.full_name || assignedUser?.email || null}
                   />
                 </div>
-                <p className="text-xs text-gray-500 truncate max-w-[200px] sm:max-w-none flex items-center gap-1 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
                   <span>{accountName.replace(/\s+Teams$/i, '')}</span>
                   <span>&middot;</span>
                   <span>{getChannelLabel(channel)}</span>
@@ -248,7 +276,16 @@ export default async function ConversationPage({
                   {conversation.participant_email && (
                     <span className="hidden sm:inline">&middot; {conversation.participant_email}</span>
                   )}
-                </p>
+                  {totalConversations > 1 && (
+                    <span className="hidden sm:inline">&middot; {totalConversations} conversations</span>
+                  )}
+                </div>
+                {/* Conversation timer */}
+                <div className="flex items-center gap-3 text-[10px] text-gray-400 mt-0.5">
+                  {firstMsgAt && <span>Active {formatDuration(activeDurationMs)}</span>}
+                  {lastMsgAt && <span>&middot; Last reply {formatDuration(lastReplyMs)} ago</span>}
+                  <span>&middot; {messageCount} messages ({inboundCount} inbound)</span>
+                </div>
               </div>
             </div>
           </div>
@@ -274,6 +311,14 @@ export default async function ConversationPage({
               </div>
             )}
           </div>
+
+          {/* Suggested replies */}
+          <SuggestedReplies
+            conversationId={id}
+            latestMessage={(messages || []).filter((m: any) => m.direction === 'inbound').pop()?.message_text || null}
+            category={classification?.category || null}
+            onInsert={() => {}}
+          />
 
           {/* Bottom action bar */}
           <div className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 py-3">
