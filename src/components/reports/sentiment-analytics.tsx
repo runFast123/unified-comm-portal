@@ -165,11 +165,23 @@ function SentimentScoreBar({ score }: { score: number }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+interface ChannelSentiment {
+  channel: string
+  positive: number
+  neutral: number
+  negative: number
+  total: number
+  score: number
+  messages: { sentiment: string; preview: string }[]
+}
+
 export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
   const [loading, setLoading] = useState(true)
   const [modalData, setModalData] = useState<{ title: string; messages: { sentiment: string; preview: string }[] } | null>(null)
+  const [channelFilter, setChannelFilter] = useState<'all' | 'email' | 'teams' | 'whatsapp'>('all')
   const [overallScore, setOverallScore] = useState(0)
   const [totals, setTotals] = useState({ positive: 0, neutral: 0, negative: 0, total: 0 })
+  const [channelSentiments, setChannelSentiments] = useState<ChannelSentiment[]>([])
   const [companies, setCompanies] = useState<CompanySentiment[]>([])
   const [dailyTrend, setDailyTrend] = useState<SentimentByDay[]>([])
   const [atRisk, setAtRisk] = useState<AtRiskConversation[]>([])
@@ -216,6 +228,33 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
         sentiment: c.sentiment,
         preview: ((c.messages?.sender_name || '').replace(/<[^>]+>/g, '').trim() || 'Customer') + ': ' + (c.messages?.message_text || '').substring(0, 120),
       })))
+
+      // --- Channel-wise breakdown ---
+      const chMap: Record<string, { pos: number; neu: number; neg: number; total: number; messages: { sentiment: string; preview: string }[] }> = {}
+      classifications.forEach((c: any) => {
+        const ch = c.messages?.channel || 'email'
+        if (!chMap[ch]) chMap[ch] = { pos: 0, neu: 0, neg: 0, total: 0, messages: [] }
+        chMap[ch].total++
+        if (c.sentiment === 'positive') chMap[ch].pos++
+        else if (c.sentiment === 'negative') chMap[ch].neg++
+        else chMap[ch].neu++
+        chMap[ch].messages.push({
+          sentiment: c.sentiment,
+          preview: ((c.messages?.sender_name || '').replace(/<[^>]+>/g, '').trim() || 'Customer') + ': ' + (c.messages?.message_text || '').substring(0, 120),
+        })
+      })
+      setChannelSentiments(['email', 'teams', 'whatsapp'].map(ch => {
+        const d = chMap[ch] || { pos: 0, neu: 0, neg: 0, total: 0, messages: [] }
+        return {
+          channel: ch,
+          positive: d.pos,
+          neutral: d.neu,
+          negative: d.neg,
+          total: d.total,
+          score: d.total > 0 ? Math.round(((d.pos - d.neg) / d.total) * 100) : 0,
+          messages: d.messages,
+        }
+      }))
 
       // --- Company-wise breakdown ---
       const companyMap: Record<string, { accountId: string; pos: number; neu: number; neg: number; total: number; recentSentiments: { sentiment: string; time: string }[]; messages: { sentiment: string; preview: string }[] }> = {}
@@ -354,13 +393,84 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Overall Sentiment KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SentimentStatCard label="Overall Score" value={`${overallScore > 0 ? '+' : ''}${overallScore}`} subtitle="Scale: -100 to +100" icon={overallScore >= 0 ? Smile : Frown} color={overallScore >= 20 ? 'bg-green-500' : overallScore >= -20 ? 'bg-gray-500' : 'bg-red-500'} bgColor="border-gray-200 bg-white" />
-        <SentimentStatCard label="Positive" value={totals.positive} subtitle={`${totals.total > 0 ? Math.round((totals.positive / totals.total) * 100) : 0}% of total`} icon={Smile} color="bg-green-500" bgColor="border-green-100 bg-green-50" />
-        <SentimentStatCard label="Neutral" value={totals.neutral} subtitle={`${totals.total > 0 ? Math.round((totals.neutral / totals.total) * 100) : 0}% of total`} icon={Meh} color="bg-gray-500" bgColor="border-gray-100 bg-gray-50" />
-        <SentimentStatCard label="Negative" value={totals.negative} subtitle={`${totals.total > 0 ? Math.round((totals.negative / totals.total) * 100) : 0}% of total`} icon={Frown} color="bg-red-500" bgColor="border-red-100 bg-red-50" />
+      {/* Channel Filter Tabs */}
+      <div className="flex items-center gap-2 rounded-lg bg-gray-100 p-1">
+        {[
+          { value: 'all' as const, label: 'All Channels' },
+          { value: 'email' as const, label: 'Email' },
+          { value: 'teams' as const, label: 'Teams' },
+          { value: 'whatsapp' as const, label: 'WhatsApp' },
+        ].map(tab => (
+          <button
+            key={tab.value}
+            onClick={() => setChannelFilter(tab.value)}
+            className={cn(
+              'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+              channelFilter === tab.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
+
+      {/* Per-Channel Sentiment Cards */}
+      {channelFilter === 'all' ? (
+        <>
+          {/* Overall KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <SentimentStatCard label="Overall Score" value={`${overallScore > 0 ? '+' : ''}${overallScore}`} subtitle="Scale: -100 to +100" icon={overallScore >= 0 ? Smile : Frown} color={overallScore >= 20 ? 'bg-green-500' : overallScore >= -20 ? 'bg-gray-500' : 'bg-red-500'} bgColor="border-gray-200 bg-white" />
+            <SentimentStatCard label="Positive" value={totals.positive} subtitle={`${totals.total > 0 ? Math.round((totals.positive / totals.total) * 100) : 0}% of total`} icon={Smile} color="bg-green-500" bgColor="border-green-100 bg-green-50" />
+            <SentimentStatCard label="Neutral" value={totals.neutral} subtitle={`${totals.total > 0 ? Math.round((totals.neutral / totals.total) * 100) : 0}% of total`} icon={Meh} color="bg-gray-500" bgColor="border-gray-100 bg-gray-50" />
+            <SentimentStatCard label="Negative" value={totals.negative} subtitle={`${totals.total > 0 ? Math.round((totals.negative / totals.total) * 100) : 0}% of total`} icon={Frown} color="bg-red-500" bgColor="border-red-100 bg-red-50" />
+          </div>
+
+          {/* Channel comparison cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {channelSentiments.map(ch => (
+              <button
+                key={ch.channel}
+                onClick={() => ch.total > 0 ? setModalData({ title: `${ch.channel.charAt(0).toUpperCase() + ch.channel.slice(1)} — Sentiment Details`, messages: ch.messages }) : null}
+                className={cn('rounded-xl border border-gray-200 bg-white p-4 text-left transition-all', ch.total > 0 && 'hover:border-teal-300 hover:shadow-sm cursor-pointer')}
+              >
+                <p className="text-sm font-semibold text-gray-800 capitalize mb-2">{ch.channel}</p>
+                <p className={cn('text-2xl font-bold', ch.score >= 20 ? 'text-green-600' : ch.score >= -20 ? 'text-gray-700' : 'text-red-600')}>
+                  {ch.total > 0 ? `${ch.score > 0 ? '+' : ''}${ch.score}` : '--'}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">{ch.total} messages</p>
+                {ch.total > 0 && (
+                  <>
+                    <div className="flex items-center gap-1 h-2 rounded-full overflow-hidden bg-gray-100 mt-2">
+                      {ch.positive > 0 && <div className="h-full bg-green-500" style={{ width: `${(ch.positive / ch.total) * 100}%` }} />}
+                      {ch.neutral > 0 && <div className="h-full bg-gray-300" style={{ width: `${(ch.neutral / ch.total) * 100}%` }} />}
+                      {ch.negative > 0 && <div className="h-full bg-red-400" style={{ width: `${(ch.negative / ch.total) * 100}%` }} />}
+                    </div>
+                    <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                      <span>{ch.positive} pos</span>
+                      <span>{ch.neutral} neu</span>
+                      <span>{ch.negative} neg</span>
+                    </div>
+                    <p className="text-[10px] text-teal-600 text-center mt-1">Click for details</p>
+                  </>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        /* Filtered to single channel */
+        (() => {
+          const ch = channelSentiments.find(c => c.channel === channelFilter) || { channel: channelFilter, positive: 0, neutral: 0, negative: 0, total: 0, score: 0, messages: [] }
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <SentimentStatCard label={`${channelFilter.charAt(0).toUpperCase() + channelFilter.slice(1)} Score`} value={ch.total > 0 ? `${ch.score > 0 ? '+' : ''}${ch.score}` : '--'} subtitle={`${ch.total} messages`} icon={ch.score >= 0 ? Smile : Frown} color={ch.score >= 20 ? 'bg-green-500' : ch.score >= -20 ? 'bg-gray-500' : 'bg-red-500'} bgColor="border-gray-200 bg-white" />
+              <SentimentStatCard label="Positive" value={ch.positive} subtitle={`${ch.total > 0 ? Math.round((ch.positive / ch.total) * 100) : 0}%`} icon={Smile} color="bg-green-500" bgColor="border-green-100 bg-green-50" />
+              <SentimentStatCard label="Neutral" value={ch.neutral} subtitle={`${ch.total > 0 ? Math.round((ch.neutral / ch.total) * 100) : 0}%`} icon={Meh} color="bg-gray-500" bgColor="border-gray-100 bg-gray-50" />
+              <SentimentStatCard label="Negative" value={ch.negative} subtitle={`${ch.total > 0 ? Math.round((ch.negative / ch.total) * 100) : 0}%`} icon={Frown} color="bg-red-500" bgColor="border-red-100 bg-red-50" />
+            </div>
+          )
+        })()
+      )}
 
       {/* Overall Sentiment Score Bar — clickable */}
       <ReportCard title="Overall Sentiment Score" description={`Based on ${totals.total} classified messages — click to see details`}>
