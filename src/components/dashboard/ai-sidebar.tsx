@@ -25,10 +25,17 @@ import { Button } from '@/components/ui/button'
 import { cn, getSentimentColor, getUrgencyColor } from '@/lib/utils'
 import type { MessageClassification, AIReply } from '@/types/database'
 
+export interface SentimentPoint {
+  sentiment: 'positive' | 'neutral' | 'negative'
+  timestamp: string
+  preview: string
+}
+
 export interface AISidebarProps {
   classification: MessageClassification | null
   aiReply: AIReply | null
   kbArticles: string[]
+  sentimentHistory?: SentimentPoint[]
   customerHistory?: {
     id: string
     channel: string
@@ -148,6 +155,7 @@ export function AISidebar({
   classification,
   aiReply,
   kbArticles,
+  sentimentHistory = [],
   customerHistory = [],
   onApprove,
   onEdit,
@@ -350,6 +358,64 @@ export function AISidebar({
           </ul>
         </SidebarSection>
       )}
+
+      {/* Customer Sentiment Trend */}
+      {sentimentHistory.length >= 2 && (() => {
+        const sentimentValues: number[] = sentimentHistory.map(s => s.sentiment === 'positive' ? 1 : s.sentiment === 'negative' ? -1 : 0)
+        const recent = sentimentValues.slice(-3)
+        const earlier = sentimentValues.slice(0, Math.max(1, sentimentValues.length - 3))
+        const recentAvg = recent.reduce((a: number, b: number) => a + b, 0) / recent.length
+        const earlierAvg = earlier.reduce((a: number, b: number) => a + b, 0) / earlier.length
+        const trend = recentAvg - earlierAvg
+        const trendLabel = trend < -0.3 ? 'Declining' : trend > 0.3 ? 'Improving' : 'Stable'
+        const trendColor = trend < -0.3 ? 'text-red-600' : trend > 0.3 ? 'text-green-600' : 'text-gray-500'
+        const TrendIcon = trend < -0.3 ? TrendingDown : trend > 0.3 ? TrendingUp : Minus
+        const negCount = sentimentValues.filter(v => v === -1).length
+        const posCount = sentimentValues.filter(v => v === 1).length
+        const neuCount = sentimentValues.filter(v => v === 0).length
+
+        return (
+          <SidebarSection title="Customer Sentiment" icon={TrendingUp} defaultOpen={true}>
+            <div className="space-y-3">
+              {/* Trend indicator */}
+              <div className={cn('flex items-center gap-2 rounded-lg px-3 py-2', trend < -0.3 ? 'bg-red-50 border border-red-200' : trend > 0.3 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200')}>
+                <TrendIcon className={cn('h-5 w-5', trendColor)} />
+                <div>
+                  <p className={cn('text-sm font-semibold', trendColor)}>{trendLabel}</p>
+                  <p className="text-xs text-gray-500">{sentimentHistory.length} messages analyzed</p>
+                </div>
+                {trend < -0.3 && (
+                  <Badge variant="danger" size="sm" className="ml-auto">At Risk</Badge>
+                )}
+              </div>
+
+              {/* Sentiment breakdown */}
+              <div className="flex items-center gap-1 h-3 rounded-full overflow-hidden bg-gray-100">
+                {posCount > 0 && <div className="h-full bg-green-500 transition-all" style={{ width: `${(posCount / sentimentValues.length) * 100}%` }} />}
+                {neuCount > 0 && <div className="h-full bg-gray-400 transition-all" style={{ width: `${(neuCount / sentimentValues.length) * 100}%` }} />}
+                {negCount > 0 && <div className="h-full bg-red-500 transition-all" style={{ width: `${(negCount / sentimentValues.length) * 100}%` }} />}
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-500">
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> {posCount} positive</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-gray-400" /> {neuCount} neutral</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> {negCount} negative</span>
+              </div>
+
+              {/* Message-level sentiment timeline */}
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {sentimentHistory.slice(-5).map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className={cn('h-2 w-2 rounded-full shrink-0',
+                      s.sentiment === 'positive' ? 'bg-green-500' : s.sentiment === 'negative' ? 'bg-red-500' : 'bg-gray-400'
+                    )} />
+                    <span className="text-gray-600 truncate flex-1">{s.preview.substring(0, 50)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </SidebarSection>
+        )
+      })()}
 
       {/* Customer History */}
       {customerHistory.length > 0 && (

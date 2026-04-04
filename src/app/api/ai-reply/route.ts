@@ -85,8 +85,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Conversation does not belong to this account' }, { status: 403 })
     }
 
-    // Prevent duplicate AI replies for the same message
+    // Prevent duplicate AI replies
     if (!force) {
+      // 1. Skip if this exact message already has a reply
       const { data: existingReply } = await supabase
         .from('ai_replies')
         .select('id')
@@ -95,6 +96,22 @@ export async function POST(request: Request) {
       if (existingReply) {
         return NextResponse.json(
           { message: 'AI reply already exists for this message', skipped: true, existing_id: existingReply.id },
+          { status: 200 }
+        )
+      }
+
+      // 2. Skip if there's already a PENDING draft for this conversation
+      //    (customer sent multiple messages — wait for agent to handle existing draft first)
+      const { data: pendingDraft } = await supabase
+        .from('ai_replies')
+        .select('id, message_id')
+        .eq('conversation_id', conversation_id)
+        .in('status', ['pending_approval', 'edited'])
+        .limit(1)
+        .maybeSingle()
+      if (pendingDraft) {
+        return NextResponse.json(
+          { message: 'Pending AI draft already exists for this conversation — skipping to avoid duplicates', skipped: true, existing_id: pendingDraft.id },
           { status: 200 }
         )
       }

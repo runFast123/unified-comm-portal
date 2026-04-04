@@ -95,14 +95,24 @@ export default async function ConversationPage({
   // Fetch classifications for messages in this conversation
   const messageIds = (messages || []).map((m) => m.id)
   let classification = null
+  let sentimentHistory: { sentiment: 'positive' | 'neutral' | 'negative'; timestamp: string; preview: string }[] = []
   if (messageIds.length > 0) {
-    const { data: classifications } = await supabase
+    const { data: allClassifications } = await supabase
       .from('message_classifications')
-      .select('*')
+      .select('*, messages!inner(message_text, timestamp)')
       .in('message_id', messageIds)
-      .order('classified_at', { ascending: false })
-      .limit(1)
-    classification = classifications?.[0] ?? null
+      .order('classified_at', { ascending: true })
+
+    if (allClassifications && allClassifications.length > 0) {
+      // Latest classification for the sidebar header
+      classification = allClassifications[allClassifications.length - 1]
+      // Build sentiment history from all classifications
+      sentimentHistory = allClassifications.map((c: any) => ({
+        sentiment: c.sentiment as 'positive' | 'neutral' | 'negative',
+        timestamp: c.classified_at || c.messages?.timestamp || '',
+        preview: c.messages?.message_text?.substring(0, 60) || '',
+      }))
+    }
   }
 
   // Fetch AI replies for this conversation
@@ -286,6 +296,7 @@ export default async function ConversationPage({
             classification={classification}
             aiReply={mappedAiReply}
             kbArticles={kbArticleTitles}
+            sentimentHistory={sentimentHistory}
             customerHistory={customerHistory}
           />
           <InternalNotes conversationId={id} />

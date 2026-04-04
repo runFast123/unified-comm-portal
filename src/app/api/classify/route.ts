@@ -173,6 +173,37 @@ export async function POST(request: Request) {
       }
     }
 
+    // Auto-escalate: if sentiment is negative AND urgency is high/urgent, escalate the conversation
+    if (classification.sentiment === 'negative' && (classification.urgency === 'high' || classification.urgency === 'urgent')) {
+      try {
+        // Get the conversation_id from the message
+        const { data: msg } = await supabase
+          .from('messages')
+          .select('conversation_id')
+          .eq('id', message_id)
+          .maybeSingle()
+
+        if (msg?.conversation_id) {
+          // Check if conversation is already escalated
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('status')
+            .eq('id', msg.conversation_id)
+            .maybeSingle()
+
+          if (conv && conv.status !== 'escalated') {
+            await supabase
+              .from('conversations')
+              .update({ status: 'escalated', priority: 'urgent' })
+              .eq('id', msg.conversation_id)
+            console.log(`[AUTO-ESCALATE] Conversation ${msg.conversation_id} escalated: negative sentiment + ${classification.urgency} urgency`)
+          }
+        }
+      } catch (escErr) {
+        console.error('Auto-escalation failed:', escErr)
+      }
+    }
+
     return NextResponse.json(stored, { status: 200 })
   } catch (error) {
     console.error('Classification error:', error)
