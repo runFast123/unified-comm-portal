@@ -398,6 +398,7 @@ export default function DashboardPage() {
           .select('channel')
           .gte('received_at', rangeISO)
           .eq('direction', 'inbound')
+          .limit(10000)
         if (accountIdFilter) channelMsgQuery = channelMsgQuery.eq('account_id', accountIdFilter)
 
         let channelPendingQuery = supabase
@@ -407,6 +408,7 @@ export default function DashboardPage() {
           .eq('direction', 'inbound')
           .eq('reply_required', true)
           .eq('replied', false)
+          .limit(10000)
         if (accountIdFilter) channelPendingQuery = channelPendingQuery.eq('account_id', accountIdFilter)
 
         let aiSentQuery = supabase
@@ -414,6 +416,7 @@ export default function DashboardPage() {
           .select('channel')
           .gte('sent_at', rangeISO)
           .eq('status', 'sent')
+          .limit(10000)
         if (accountIdFilter) aiSentQuery = aiSentQuery.eq('account_id', accountIdFilter)
 
         // Combine category + sentiment into a single query (same table, same date filter)
@@ -421,6 +424,7 @@ export default function DashboardPage() {
           .from('message_classifications')
           .select('category, sentiment')
           .gte('classified_at', rangeISO)
+          .limit(10000)
 
         // Account pending counts (for account overview table)
         let pendingByAccountQuery = supabase
@@ -429,6 +433,7 @@ export default function DashboardPage() {
           .eq('direction', 'inbound')
           .eq('reply_required', true)
           .eq('replied', false)
+          .limit(10000)
         if (accountIdFilter) pendingByAccountQuery = pendingByAccountQuery.eq('account_id', accountIdFilter)
 
         // Last message time per account
@@ -437,6 +442,7 @@ export default function DashboardPage() {
           .select('account_id, received_at')
           .eq('direction', 'inbound')
           .order('received_at', { ascending: false })
+          .limit(10000)
         if (accountIdFilter) lastMsgQuery = lastMsgQuery.eq('account_id', accountIdFilter)
 
         // SLA: inbound messages in range
@@ -445,6 +451,7 @@ export default function DashboardPage() {
           .select('id, conversation_id, received_at')
           .eq('direction', 'inbound')
           .gte('received_at', rangeISO)
+          .limit(10000)
         if (accountIdFilter) slaInboundQuery = slaInboundQuery.eq('account_id', accountIdFilter)
 
         // SLA: outbound replies in range
@@ -453,6 +460,7 @@ export default function DashboardPage() {
           .select('conversation_id, timestamp')
           .eq('direction', 'outbound')
           .gte('timestamp', rangeISO)
+          .limit(10000)
           .order('timestamp', { ascending: true })
         if (accountIdFilter) slaOutboundQuery = slaOutboundQuery.eq('account_id', accountIdFilter)
 

@@ -194,6 +194,7 @@ export default function ContactsPage() {
           account:accounts!inner(id, name)
         `)
         .not('participant_name', 'is', null)
+        .limit(10000)
 
       // Company scoping for non-admins
       if (!isAdmin && userAccountId) {

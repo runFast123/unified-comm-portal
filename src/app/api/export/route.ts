@@ -54,7 +54,7 @@ export async function GET(request: Request) {
         `)
         .eq('direction', 'inbound')
         .order('received_at', { ascending: false })
-        .limit(5000)
+        .limit(10000)
 
       if (from) query = query.gte('received_at', from)
       if (to) query = query.lte('received_at', to)
@@ -98,7 +98,7 @@ export async function GET(request: Request) {
           messages!ai_replies_message_id_fkey(sender_name, email_subject, received_at)
         `)
         .order('created_at', { ascending: false })
-        .limit(5000)
+        .limit(10000)
 
       if (from) query = query.gte('created_at', from)
       if (to) query = query.lte('created_at', to)
