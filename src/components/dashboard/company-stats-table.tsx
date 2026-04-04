@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import Link from 'next/link'
 import { ChannelIcon } from '@/components/ui/channel-icon'
 import { Badge } from '@/components/ui/badge'
@@ -261,9 +261,8 @@ export function CompanyStatsTable({ stats }: Props) {
         {sorted.map((s) => {
           const isExpanded = expandedRow === s.name
           return (
-            <>
+            <Fragment key={s.id}>
               <TableRow
-                key={s.id}
                 className="cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setExpandedRow(isExpanded ? null : s.name)}
               >
@@ -366,7 +365,7 @@ export function CompanyStatsTable({ stats }: Props) {
                   </TableCell>
                 </TableRow>
               )}
-            </>
+            </Fragment>
           )
         })}
       </TableBody>

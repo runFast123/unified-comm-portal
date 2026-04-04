@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronRight, ExternalLink, MessageCircle, Clock } from 'lucide-react'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -81,9 +81,8 @@ export function AccountsTable({ accounts, filter }: AccountsTableProps) {
           if (!primary) return null
           const isExpanded = expandedRow === group.baseName
           return (
-            <>
+            <Fragment key={group.baseName}>
               <TableRow
-                key={group.baseName}
                 className="cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setExpandedRow(isExpanded ? null : group.baseName)}
               >
@@ -181,7 +180,7 @@ export function AccountsTable({ accounts, filter }: AccountsTableProps) {
                   </TableCell>
                 </TableRow>
               )}
-            </>
+            </Fragment>
           )
         })}
         {groups.length === 0 && (
