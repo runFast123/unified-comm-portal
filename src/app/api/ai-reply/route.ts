@@ -100,18 +100,21 @@ export async function POST(request: Request) {
         )
       }
 
-      // 2. Skip if there's already a PENDING draft for this conversation
-      //    (customer sent multiple messages — wait for agent to handle existing draft first)
+      // 2. Skip if there's a RECENT pending draft for this conversation (< 10 min old)
+      //    (customer sent multiple messages quickly — wait for agent to handle existing draft)
+      //    Older pending drafts are ignored — agent skipped them, generate a fresh one
+      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
       const { data: pendingDraft } = await supabase
         .from('ai_replies')
         .select('id, message_id')
         .eq('conversation_id', conversation_id)
         .in('status', ['pending_approval', 'edited'])
+        .gte('created_at', tenMinAgo)
         .limit(1)
         .maybeSingle()
       if (pendingDraft) {
         return NextResponse.json(
-          { message: 'Pending AI draft already exists for this conversation — skipping to avoid duplicates', skipped: true, existing_id: pendingDraft.id },
+          { message: 'Recent pending AI draft exists for this conversation — skipping to avoid duplicates', skipped: true, existing_id: pendingDraft.id },
           { status: 200 }
         )
       }
