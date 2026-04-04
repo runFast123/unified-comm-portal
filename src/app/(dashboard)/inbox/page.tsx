@@ -309,7 +309,28 @@ export default function InboxPage() {
         } satisfies InboxItem
       })
 
-      setItems(mapped)
+      // For Teams: group by conversation_id and show only the latest message per conversation
+      // Email shows each message individually (each email = separate topic)
+      const convMap = new Map<string, InboxItem>()
+      const deduped: InboxItem[] = []
+      for (const item of mapped) {
+        if (item.channel === 'teams') {
+          const existing = convMap.get(item.conversation_id)
+          if (!existing || item.timestamp > existing.timestamp) {
+            convMap.set(item.conversation_id, item)
+          }
+        } else {
+          deduped.push(item)
+        }
+      }
+      // Add the latest Teams message per conversation
+      for (const item of convMap.values()) {
+        deduped.push(item)
+      }
+      // Re-sort by timestamp descending
+      deduped.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+      setItems(deduped)
     } catch (err: any) {
       console.error('Failed to fetch inbox items:', err)
       setError(err.message ?? 'Failed to load inbox messages')

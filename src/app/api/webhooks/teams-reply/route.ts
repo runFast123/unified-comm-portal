@@ -76,32 +76,48 @@ export async function POST(request: Request) {
     const teamName = (metadata.team_name as string) || null
     const channelName = (metadata.channel_name as string) || null
 
-    // Store the outbound reply message
-    const { data: replyMessage, error: replyError } = await supabase
+    // Check if outbound message already exists (created by conversation-actions)
+    const { data: existingOutbound } = await supabase
       .from('messages')
-      .insert({
-        conversation_id,
-        account_id,
-        channel: 'teams',
-        sender_name: 'Agent',
-        sender_type: 'agent',
-        message_text: reply_text,
-        message_type: 'text',
-        direction: 'outbound',
-        replied: true,
-        reply_required: false,
-        timestamp: new Date().toISOString(),
-        received_at: new Date().toISOString(),
-      })
       .select('id')
-      .single()
+      .eq('conversation_id', conversation_id)
+      .eq('direction', 'outbound')
+      .eq('message_text', reply_text.substring(0, 200))
+      .gte('timestamp', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+      .limit(1)
+      .maybeSingle()
 
-    if (replyError || !replyMessage) {
-      console.error('Failed to store Teams reply message:', replyError)
-      return NextResponse.json(
-        { error: 'Failed to store reply message' },
-        { status: 500 }
-      )
+    let replyMessageId = existingOutbound?.id
+
+    // Only create if not already exists
+    if (!existingOutbound) {
+      const { data: replyMessage, error: replyError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id,
+          account_id,
+          channel: 'teams',
+          sender_name: 'Agent',
+          sender_type: 'agent',
+          message_text: reply_text,
+          message_type: 'text',
+          direction: 'outbound',
+          replied: true,
+          reply_required: false,
+          timestamp: new Date().toISOString(),
+          received_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single()
+
+      if (replyError || !replyMessage) {
+        console.error('Failed to store Teams reply message:', replyError)
+        return NextResponse.json(
+          { error: 'Failed to store reply message' },
+          { status: 500 }
+        )
+      }
+      replyMessageId = replyMessage.id
     }
 
     // Mark any pending AI replies for this conversation as sent
@@ -131,7 +147,7 @@ export async function POST(request: Request) {
       teams_chat_id: conversation.teams_chat_id,
       team_name: teamName,
       channel_name: channelName,
-      message_id: replyMessage.id,
+      message_id: replyMessageId,
       conversation_id,
     })
   } catch (error) {
