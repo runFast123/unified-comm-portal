@@ -5,6 +5,7 @@ import { ChannelIcon } from '@/components/ui/channel-icon'
 import { ConversationThread } from '@/components/dashboard/conversation-thread'
 import { ScrollToBottom } from '@/components/dashboard/scroll-to-bottom'
 import { MarkRead } from '@/components/dashboard/mark-read'
+import { ConversationRealtime } from '@/components/dashboard/conversation-realtime'
 import { AISidebar } from '@/components/dashboard/ai-sidebar'
 import { ConversationActions } from '@/components/dashboard/conversation-actions'
 import { StatusDropdown } from '@/components/dashboard/status-dropdown'
@@ -255,6 +256,7 @@ export default async function ConversationPage({
       </div>
 
       <MarkRead conversationId={id} />
+      <ConversationRealtime conversationId={id} />
 
       {/* Main content area */}
       <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">

@@ -197,6 +197,23 @@ export async function POST(request: Request) {
               .update({ status: 'escalated', priority: 'urgent' })
               .eq('id', msg.conversation_id)
             console.log(`[AUTO-ESCALATE] Conversation ${msg.conversation_id} escalated: negative sentiment + ${classification.urgency} urgency`)
+
+            // Trigger urgent notification for escalation
+            try {
+              const { triggerNotifications } = await import('@/lib/notification-service')
+              await triggerNotifications(supabase, {
+                id: message_id,
+                conversation_id: msg.conversation_id,
+                account_id,
+                account_name: accountName,
+                channel: validatedChannel as 'email' | 'teams' | 'whatsapp',
+                sender_name: null,
+                email_subject: null,
+                message_text: `[AUTO-ESCALATED] Negative sentiment detected — ${classification.topic_summary || 'Customer is unhappy'}`,
+                is_spam: false,
+                priority: 'urgent',
+              })
+            } catch { /* non-critical */ }
           }
         }
       } catch (escErr) {

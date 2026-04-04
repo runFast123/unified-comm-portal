@@ -128,7 +128,55 @@ export async function triggerNotifications(
         }
       })
 
-    await Promise.allSettled(emailPromises)
+    // Slack webhook notifications
+    const slackPromises = matchingRules
+      .filter((rule: Record<string, unknown>) => rule.notify_slack && rule.slack_webhook_url)
+      .map(async (rule: Record<string, unknown>) => {
+        try {
+          const slackPayload = {
+            blocks: [
+              {
+                type: 'header',
+                text: { type: 'plain_text', text: `[${priorityLabel}] New ${channelLabel} Message` },
+              },
+              {
+                type: 'section',
+                fields: [
+                  { type: 'mrkdwn', text: `*From:*\n${messageData.sender_name || 'Unknown'}` },
+                  { type: 'mrkdwn', text: `*Account:*\n${messageData.account_name}` },
+                  { type: 'mrkdwn', text: `*Channel:*\n${channelLabel}` },
+                  { type: 'mrkdwn', text: `*Priority:*\n${priorityLabel}` },
+                ],
+              },
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*Preview:*\n>${messagePreview.substring(0, 200)}` },
+              },
+              {
+                type: 'actions',
+                elements: [
+                  {
+                    type: 'button',
+                    text: { type: 'plain_text', text: 'View Conversation' },
+                    url: conversationUrl,
+                    style: 'primary',
+                  },
+                ],
+              },
+            ],
+          }
+          await fetch(rule.slack_webhook_url as string, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(slackPayload),
+          })
+          console.log(`Slack notification sent for message ${messageData.id}`)
+        } catch (slackError) {
+          console.error('Slack notification failed:', slackError instanceof Error ? slackError.message : slackError)
+        }
+      })
+
+    await Promise.allSettled([...emailPromises, ...slackPromises])
   } catch (outerError) {
     console.error('triggerNotifications error:', outerError instanceof Error ? outerError.message : outerError)
   }

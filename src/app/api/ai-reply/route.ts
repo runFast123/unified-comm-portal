@@ -340,6 +340,28 @@ export async function POST(request: Request) {
       )
     }
 
+    // Calculate AI confidence score (0.0 to 1.0)
+    let confidenceScore = 0.5 // Base confidence
+
+    // +0.15 if KB articles were matched (AI has company knowledge)
+    if (matchedKbIds.length > 0) confidenceScore += 0.15
+    // +0.05 per additional KB article (max +0.15 for 3)
+    confidenceScore += Math.min(matchedKbIds.length - 1, 3) * 0.05
+
+    // +0.1 if conversation history exists (AI has context)
+    if (recentMessages && recentMessages.length > 2) confidenceScore += 0.1
+
+    // +0.1 if classification confidence was high
+    const { data: classData } = await supabase
+      .from('message_classifications')
+      .select('confidence')
+      .eq('message_id', message_id)
+      .maybeSingle()
+    if (classData?.confidence && classData.confidence > 0.8) confidenceScore += 0.1
+
+    // Cap at 0.98
+    confidenceScore = Math.min(Math.round(confidenceScore * 100) / 100, 0.98)
+
     // Determine reply status based on trust mode
     const replyStatus: AIReplyStatus = account.ai_trust_mode
       ? 'sent'
@@ -355,6 +377,7 @@ export async function POST(request: Request) {
         draft_text: replyText,
         channel: channelKey,
         status: replyStatus,
+        confidence_score: confidenceScore,
         system_prompt_used: systemPrompt,
         created_at: new Date().toISOString(),
         ...(replyStatus === 'sent' ? { sent_at: new Date().toISOString() } : {}),

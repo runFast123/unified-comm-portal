@@ -273,6 +273,10 @@ export function OverviewEnhancements({ dateStart }: { dateStart: string }) {
 
 export function AIPerformanceEnhancements({ dateStart }: { dateStart: string }) {
   const [funnel, setFunnel] = useState<AiFunnel>({ pending_approval: 0, approved: 0, sent: 0, rejected: 0, edited: 0, auto_sent: 0 })
+  const [confidenceDistribution, setConfidenceDistribution] = useState<{ range: string; count: number }[]>([])
+  const [editedCount, setEditedCount] = useState(0)
+  const [totalReplies, setTotalReplies] = useState(0)
+  const [avgConfidence, setAvgConfidence] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -281,13 +285,34 @@ export function AIPerformanceEnhancements({ dateStart }: { dateStart: string }) 
       const supabase = createClient()
       const { data } = await supabase
         .from('ai_replies')
-        .select('status')
+        .select('status, confidence_score, edited_text, draft_text')
         .gte('created_at', dateStart)
         .limit(10000)
 
       const f: AiFunnel = { pending_approval: 0, approved: 0, sent: 0, rejected: 0, edited: 0, auto_sent: 0 }
-      ;(data || []).forEach((r: any) => { if (r.status in f) (f as any)[r.status]++ })
+      const confBuckets: Record<string, number> = { '0-20%': 0, '20-40%': 0, '40-60%': 0, '60-80%': 0, '80-100%': 0 }
+      let confSum = 0, confCount = 0, edited = 0
+
+      ;(data || []).forEach((r: any) => {
+        if (r.status in f) (f as any)[r.status]++
+        if (r.edited_text && r.edited_text !== r.draft_text) edited++
+        if (r.confidence_score != null) {
+          const pct = r.confidence_score * 100
+          confSum += pct
+          confCount++
+          if (pct < 20) confBuckets['0-20%']++
+          else if (pct < 40) confBuckets['20-40%']++
+          else if (pct < 60) confBuckets['40-60%']++
+          else if (pct < 80) confBuckets['60-80%']++
+          else confBuckets['80-100%']++
+        }
+      })
+
       setFunnel(f)
+      setEditedCount(edited)
+      setTotalReplies(data?.length || 0)
+      setAvgConfidence(confCount > 0 ? Math.round(confSum / confCount) : 0)
+      setConfidenceDistribution(Object.entries(confBuckets).map(([range, count]) => ({ range, count })))
       setLoading(false)
     }
     fetch()
@@ -296,9 +321,46 @@ export function AIPerformanceEnhancements({ dateStart }: { dateStart: string }) 
   if (loading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
 
   return (
+    <>
+    {/* KPI row */}
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <StatCard label="Total AI Replies" value={totalReplies} icon={MessageCircle} color="bg-purple-500" />
+      <StatCard label="Avg Confidence" value={`${avgConfidence}%`} subtitle={avgConfidence >= 70 ? 'Good' : 'Needs KB improvement'} icon={CheckCircle} color={avgConfidence >= 70 ? 'bg-green-500' : 'bg-amber-500'} />
+      <StatCard label="Edit Rate" value={totalReplies > 0 ? `${Math.round((editedCount / totalReplies) * 100)}%` : '0%'} subtitle={`${editedCount} edited`} icon={AlertTriangle} color={editedCount > totalReplies * 0.3 ? 'bg-red-500' : 'bg-teal-500'} />
+      <StatCard label="Auto-Sent" value={funnel.auto_sent + funnel.sent} subtitle="Approved + sent" icon={Shield} color="bg-blue-500" />
+    </div>
+
+    {/* Funnel */}
     <ReportCard title="AI Reply Outcome Funnel" description="How AI-generated drafts progress through the review pipeline">
       <FunnelChart data={funnel} />
     </ReportCard>
+
+    {/* Confidence Distribution */}
+    <ReportCard title="AI Confidence Distribution" description="How confident the AI is in its generated replies">
+      <div className="space-y-2">
+        {confidenceDistribution.map((b, i) => {
+          const maxCount = Math.max(...confidenceDistribution.map(x => x.count), 1)
+          return (
+            <div key={i} className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-16 text-right shrink-0">{b.range}</span>
+              <div className="flex-1 h-6 bg-gray-100 rounded overflow-hidden relative">
+                <div
+                  className={cn('h-full rounded transition-all',
+                    b.range === '80-100%' ? 'bg-green-500' :
+                    b.range === '60-80%' ? 'bg-teal-500' :
+                    b.range === '40-60%' ? 'bg-amber-500' :
+                    'bg-red-400'
+                  )}
+                  style={{ width: `${Math.max((b.count / maxCount) * 100, 3)}%` }}
+                />
+              </div>
+              <span className="text-xs font-semibold text-gray-700 w-8 text-right">{b.count}</span>
+            </div>
+          )
+        })}
+      </div>
+    </ReportCard>
+    </>
   )
 }
 

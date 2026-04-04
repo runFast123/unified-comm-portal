@@ -343,14 +343,20 @@ export default function InboxPage() {
     fetchInboxItems()
   }, [fetchInboxItems])
 
-  // Real-time: track new messages with banner instead of auto-refresh
+  // Real-time: auto-refresh inbox when new messages arrive (debounced 3s)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
   useRealtimeMessages({
     onNewMessage: useCallback(() => {
       setNewMessageCount((prev) => prev + 1)
-    }, []),
+      // Debounce auto-refresh — wait 3s for rapid messages to batch
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => {
+        fetchInboxItems()
+      }, 3000)
+    }, [fetchInboxItems]),
   })
 
-  // Handler for the new message banner
+  // Handler for the new message banner (manual refresh + scroll)
   const handleRefreshNewMessages = useCallback(() => {
     setNewMessageCount(0)
     fetchInboxItems()

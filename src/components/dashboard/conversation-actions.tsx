@@ -53,13 +53,20 @@ export function ConversationActions({
   const supabaseRef = createClient()
   const [loading, setLoading] = useState<string | null>(null)
 
-  // Helper: update conversation status to waiting_on_customer after reply sent
+  // Helper: update conversation status + mark inbound messages as replied
   const markWaitingOnCustomer = useCallback(async () => {
     try {
       await supabaseRef
         .from('conversations')
         .update({ status: 'waiting_on_customer' })
         .eq('id', conversationId)
+      // Mark all unreplied inbound messages as replied
+      await supabaseRef
+        .from('messages')
+        .update({ replied: true })
+        .eq('conversation_id', conversationId)
+        .eq('direction', 'inbound')
+        .eq('replied', false)
     } catch { /* non-critical */ }
   }, [conversationId, supabaseRef])
   const [showManualReply, setShowManualReply] = useState(false)
