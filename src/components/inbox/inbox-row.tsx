@@ -240,8 +240,8 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
     <div
       onClick={handleRowClick}
       className={cn(
-        'group relative flex items-center gap-3 px-4 py-3.5 border-b border-gray-100',
-        'hover:shadow-md hover:bg-gray-50/80 transition-all duration-200 cursor-pointer',
+        'group relative flex items-center gap-3 px-4 py-3 border-b border-gray-100',
+        'hover:bg-gray-50/80 transition-colors cursor-pointer',
         getPriorityBorderClass(item.priority),
         selected && 'bg-teal-50 hover:bg-teal-50',
         isActive && 'bg-blue-50 hover:bg-blue-50 ring-1 ring-blue-300'
@@ -259,14 +259,14 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
 
       {/* Channel icon */}
       <div className="flex-shrink-0">
-        <ChannelIcon channel={item.channel} size={18} />
+        <ChannelIcon channel={item.channel} size={16} />
       </div>
 
-      {/* Sender avatar + Name & Company + Subject stacked on mobile */}
-      <div className="sm:w-48 flex-shrink-0 min-w-0 flex items-center gap-2.5 max-sm:flex-1">
+      {/* Sender avatar + Name + Company */}
+      <div className="w-44 flex-shrink-0 min-w-0 flex items-center gap-2.5">
         <div
           className={cn(
-            'flex-shrink-0 h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm',
+            'flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white',
             getAvatarColor(accountName || senderName)
           )}
           title={rawSender}
@@ -274,80 +274,72 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
           {getInitials(senderName)}
         </div>
         <div className="min-w-0">
-          <p className={cn("text-sm truncate leading-tight flex items-center gap-1.5", unread ? "font-bold text-gray-900" : "font-semibold text-gray-700")}>
-            {unread && <span className="inline-block h-2 w-2 rounded-full bg-teal-500 flex-shrink-0" />}
+          <p className={cn("text-sm truncate leading-tight", unread ? "font-bold text-gray-900" : "font-medium text-gray-700")}>
+            {unread && <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-500 mr-1" />}
             {senderName}
           </p>
-          <p className="text-xs text-gray-400 truncate leading-tight mt-0.5">{accountName}</p>
-          {/* Subject visible on mobile below sender name */}
-          <p className="text-xs text-gray-500 truncate leading-tight mt-0.5 sm:hidden">
-            {truncate(item.subject_or_preview, 50)}
-          </p>
+          <p className="text-[11px] text-gray-400 truncate leading-tight">{accountName}</p>
         </div>
       </div>
 
-      {/* Subject / Preview - hidden on mobile (shown inline above) */}
-      <div className="flex-1 min-w-0 pr-2 hidden sm:block">
-        <p className="text-sm text-gray-700 truncate leading-snug">
-          {truncate(item.subject_or_preview, 80)}
+      {/* Subject / Preview */}
+      <div className="flex-1 min-w-0 pr-2">
+        <p className="text-sm text-gray-600 truncate">
+          {truncate(item.subject_or_preview, 70)}
         </p>
       </div>
 
-      {/* Category - hidden on small screens */}
-      <div className="flex-shrink-0 hidden md:block">
-        {item.category && (
-          <Badge variant="default" size="sm">
-            {item.category}
-          </Badge>
-        )}
-      </div>
+      {/* Right section — compact info */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Category */}
+        <div className="hidden lg:block">
+          {item.category && (
+            <Badge variant="default" size="sm">{item.category}</Badge>
+          )}
+        </div>
 
-      {/* Conversation Status - hidden on small screens */}
-      <div className="flex-shrink-0 hidden lg:block">
-        {getConversationStatusBadge(item.conversation_status)}
-      </div>
+        {/* Status dot */}
+        <div className="hidden md:block">
+          {getConversationStatusBadge(item.conversation_status)}
+        </div>
 
-      {/* Sentiment - hidden on small screens */}
-      <div className="flex-shrink-0 w-6 justify-center hidden md:flex">
-        {getSentimentDot(item.sentiment)}
-      </div>
+        {/* Sentiment dot */}
+        <div className="hidden md:flex w-5 justify-center">
+          {getSentimentDot(item.sentiment)}
+        </div>
 
-      {/* SLA wait time */}
-      <div className="flex-shrink-0 w-24 text-right">
-        <SLABadge
-          receivedAt={item.time_waiting}
-          conversationStatus={item.conversation_status}
-        />
-      </div>
+        {/* SLA */}
+        <div className="w-20 text-right hidden sm:block">
+          <SLABadge
+            receivedAt={item.time_waiting}
+            conversationStatus={item.conversation_status}
+          />
+        </div>
 
-      {/* Priority */}
-      <div className="flex-shrink-0">
-        <Badge className={priorityColorClass} size="sm">
+        {/* Priority */}
+        <Badge className={cn(priorityColorClass, 'text-[10px]')} size="sm">
           {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)}
         </Badge>
+
+        {/* AI Status */}
+        {getAiStatusBadge(item.ai_status)}
       </div>
 
-      {/* AI Status */}
-      <div className="flex-shrink-0 flex items-center gap-1.5">
-        {getAiStatusBadge(item.ai_status)}
+      {/* Hover actions — positioned to the LEFT of row content to avoid overlap */}
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5 bg-white rounded-lg px-1.5 py-1 shadow-lg border border-gray-200 z-10">
         {(item.ai_status === 'no_draft' || item.ai_status === 'classify_only') && (
           <button
             onClick={handleGenerateReply}
-            className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 hover:bg-teal-100 transition-colors"
-            title="Generate AI reply for this message"
+            className="p-1.5 rounded-md text-teal-600 hover:bg-teal-50 transition-colors"
+            title="Generate AI reply"
           >
-            <Sparkles className="h-3 w-3" />
-            Generate
+            <Sparkles className="h-3.5 w-3.5" />
           </button>
         )}
-      </div>
-
-      {/* Quick action buttons on hover */}
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg px-1 py-0.5 shadow-md border border-gray-200">
         <button
           onClick={handleMarkReplied}
           className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
-          title="Mark as Replied (replied outside portal)"
+          title="Mark as Replied"
         >
           <CheckCheck className="h-3.5 w-3.5" />
         </button>
