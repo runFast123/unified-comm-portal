@@ -205,7 +205,7 @@ export function OverviewEnhancements({ dateStart }: { dateStart: string }) {
       const supabase = createClient()
 
       // Conversation health
-      const { data: convs } = await supabase.from('conversations').select('status')
+      const { data: convs } = await supabase.from('conversations').select('status').limit(10000)
       const health: ConvHealth = { active: 0, in_progress: 0, waiting_on_customer: 0, resolved: 0, escalated: 0, archived: 0 }
       ;(convs || []).forEach((c: any) => { if (c.status in health) (health as any)[c.status]++ })
       setConvHealth(health)
@@ -217,6 +217,7 @@ export function OverviewEnhancements({ dateStart }: { dateStart: string }) {
         .eq('is_spam', true)
         .eq('direction', 'inbound')
         .gte('received_at', dateStart)
+        .limit(10000)
       const reasons: Record<string, number> = {}
       ;(spamMsgs || []).forEach((m: any) => {
         const r = m.spam_reason || 'unknown'
@@ -282,6 +283,7 @@ export function AIPerformanceEnhancements({ dateStart }: { dateStart: string }) 
         .from('ai_replies')
         .select('status')
         .gte('created_at', dateStart)
+        .limit(10000)
 
       const f: AiFunnel = { pending_approval: 0, approved: 0, sent: 0, rejected: 0, edited: 0, auto_sent: 0 }
       ;(data || []).forEach((r: any) => { if (r.status in f) (f as any)[r.status]++ })
@@ -317,6 +319,7 @@ export function TrendsEnhancements() {
         .select('received_at, is_spam')
         .eq('direction', 'inbound')
         .gte('received_at', thirtyDaysAgo)
+        .limit(10000)
 
       const byDay: Record<string, { spam: number; real: number }> = {}
       ;(msgs || []).forEach((m: any) => {
@@ -389,7 +392,7 @@ export function ConversationsTab() {
       const supabase = createClient()
 
       // Status breakdown
-      const { data: convs } = await supabase.from('conversations').select('status, priority, channel, assigned_to, first_message_at, last_message_at')
+      const { data: convs } = await supabase.from('conversations').select('status, priority, channel, assigned_to, first_message_at, last_message_at').limit(10000)
       const health: ConvHealth = { active: 0, in_progress: 0, waiting_on_customer: 0, resolved: 0, escalated: 0, archived: 0 }
       const prio: Record<string, number> = { low: 0, medium: 0, high: 0, urgent: 0 }
       const resTimes: Record<string, number[]> = { email: [], teams: [] }
@@ -433,6 +436,7 @@ export function ConversationsTab() {
         .from('conversations')
         .select('assigned_to, status, users!conversations_assigned_to_fkey(full_name)')
         .not('assigned_to', 'is', null)
+        .limit(10000)
       const agentMap: Record<string, { name: string; total: number; pending: number }> = {}
       ;(assignedConvs || []).forEach((c: any) => {
         const uid = c.assigned_to
@@ -560,6 +564,7 @@ export function SpamFiltersTab({ dateStart }: { dateStart: string }) {
         .eq('is_spam', true)
         .eq('direction', 'inbound')
         .gte('received_at', dateStart)
+        .limit(10000)
 
       const reasons: Record<string, number> = {}
       const accounts: Record<string, number> = {}

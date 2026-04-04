@@ -243,6 +243,7 @@ export default function ReportsPage() {
         .gte('received_at', startDate)
         .eq('direction', 'inbound')
         .order('received_at', { ascending: true })
+        .limit(10000)
       if (endDate) messagesQuery = messagesQuery.lte('received_at', endDate)
       if (accountIdFilter) messagesQuery = messagesQuery.eq('account_id', accountIdFilter)
       const { data: messages } = await messagesQuery
@@ -252,6 +253,7 @@ export default function ReportsPage() {
         .from('message_classifications')
         .select('category, sentiment, urgency, confidence, classified_at')
         .gte('classified_at', startDate)
+        .limit(10000)
       if (endDate) classQuery = classQuery.lte('classified_at', endDate)
       const { data: classifications } = await classQuery
 
@@ -260,6 +262,7 @@ export default function ReportsPage() {
         .from('ai_replies')
         .select('status, confidence_score, created_at, sent_at, channel, account_id, messages!ai_replies_message_id_fkey(received_at)')
         .gte('created_at', startDate)
+        .limit(10000)
       if (endDate) aiQuery = aiQuery.lte('created_at', endDate)
       if (accountIdFilter) aiQuery = aiQuery.eq('account_id', accountIdFilter)
       const { data: aiReplies } = await aiQuery
@@ -464,8 +467,8 @@ export default function ReportsPage() {
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
         const [volResult, aiResult] = await Promise.all([
-          supabase.from('messages').select('received_at').eq('direction', 'inbound').gte('received_at', thirtyDaysAgo),
-          supabase.from('ai_replies').select('created_at').eq('status', 'sent').gte('created_at', thirtyDaysAgo),
+          supabase.from('messages').select('received_at').eq('direction', 'inbound').gte('received_at', thirtyDaysAgo).limit(10000),
+          supabase.from('ai_replies').select('created_at').eq('status', 'sent').gte('created_at', thirtyDaysAgo).limit(10000),
         ])
 
         // Daily volume

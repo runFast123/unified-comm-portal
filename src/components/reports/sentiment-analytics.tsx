@@ -133,6 +133,7 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
           )
         `)
         .gte('classified_at', dateStart)
+        .limit(10000)
 
       const classifications = (classData || []).filter((c: any) => !c.messages?.is_spam)
 
