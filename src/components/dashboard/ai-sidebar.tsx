@@ -367,14 +367,6 @@ export function AISidebar({
               </div>
             </div>
 
-            {/* Topic summary */}
-            {classification.topic_summary && (
-              <div className="rounded-lg bg-blue-50 p-2.5">
-                <span className="text-[10px] font-medium text-blue-500 uppercase tracking-wider">Summary</span>
-                <p className="mt-1 text-xs text-gray-700 leading-relaxed">{classification.topic_summary}</p>
-              </div>
-            )}
-
             {/* Confidence bar */}
             {classification.confidence != null && (
               <div>
