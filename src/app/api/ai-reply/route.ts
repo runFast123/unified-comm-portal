@@ -183,12 +183,30 @@ export async function POST(request: Request) {
     // Add account context so AI knows which company it's responding for
     systemPrompt += `\n\nYou are replying on behalf of "${account.name}". Always maintain this company identity in your response. CRITICAL: You MUST follow the company's Knowledge Base rules and tone. Never mention other companies. Never use information from outside the Knowledge Base.`
 
-    // Fetch ALL Knowledge Base articles for this account (company-specific KB)
+    // Fetch ALL Knowledge Base articles for this company
+    // For Teams accounts (e.g. "Mycountrymobile Teams"), KB may be linked to the
+    // email account ("Mycountrymobile"). Find sibling account by base company name.
+    const baseName = account.name.replace(/\s+Teams$/i, '').trim()
+    let kbAccountIds = [account_id]
+
+    // Find sibling accounts with same base name (e.g. email version of a Teams account)
+    const { data: siblingAccounts } = await supabase
+      .from('accounts')
+      .select('id')
+      .ilike('name', baseName)
+      .eq('is_active', true)
+    if (siblingAccounts) {
+      for (const sib of siblingAccounts) {
+        if (!kbAccountIds.includes(sib.id)) kbAccountIds.push(sib.id)
+      }
+    }
+
+    const kbFilter = kbAccountIds.map(id => `account_id.eq.${id}`).join(',')
     const { data: kbArticles } = await supabase
       .from('kb_articles')
       .select('id, title, content, category')
       .eq('is_active', true)
-      .or(`account_id.eq.${account_id},account_id.is.null`)
+      .or(`${kbFilter},account_id.is.null`)
       .order('title')
 
     let kbContext = ''
