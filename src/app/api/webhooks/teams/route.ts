@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Dedup check: skip if this teams_message_id already exists for this account
+    // Dedup check 1: skip if this teams_message_id already exists for this account
     if (teams_message_id) {
       const { data: existingMsg } = await supabase
         .from('messages')
@@ -105,6 +105,28 @@ export async function POST(request: Request) {
       if (existingMsg) {
         return NextResponse.json(
           { message: 'Duplicate - already processed', message_id: existingMsg.id },
+          { status: 200 }
+        )
+      }
+    }
+
+    // Dedup check 2: skip if an outbound message with same text exists in same
+    // conversation recently (prevents re-capturing portal-sent replies from Teams)
+    if (messageText && teams_chat_id) {
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+      const { data: recentOutbound } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('account_id', account_id)
+        .eq('direction', 'outbound')
+        .eq('message_text', messageText.substring(0, 200))
+        .gte('timestamp', fiveMinAgo)
+        .limit(1)
+        .maybeSingle()
+
+      if (recentOutbound) {
+        return NextResponse.json(
+          { message: 'Duplicate - outbound reply already recorded', message_id: recentOutbound.id },
           { status: 200 }
         )
       }

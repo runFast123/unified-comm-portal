@@ -334,21 +334,24 @@ export function ConversationActions({
           .update({ status: 'sent', sent_at: now })
           .eq('id', aiReplyId)
 
-        // Create outbound message record so it shows in the conversation thread
-        await supabase.from('messages').insert({
-          conversation_id: conversationId,
-          account_id: accountId,
-          channel: channel,
-          sender_name: accountName,
-          sender_type: 'ai',
-          message_text: aiDraftText,
-          direction: 'outbound',
-          email_subject: emailSubject ? `Re: ${emailSubject}` : null,
-          replied: true,
-          reply_required: false,
-          timestamp: now,
-          received_at: now,
-        })
+        // For Teams: the teams-reply webhook creates the outbound message record
+        // For Email: we create it here since gmail-sent webhook may not always fire
+        if (channel !== 'teams') {
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            account_id: accountId,
+            channel: channel,
+            sender_name: accountName,
+            sender_type: 'ai',
+            message_text: aiDraftText,
+            direction: 'outbound',
+            email_subject: emailSubject ? `Re: ${emailSubject}` : null,
+            replied: true,
+            reply_required: false,
+            timestamp: now,
+            received_at: now,
+          })
+        }
 
         toast.success('AI reply approved and sent!')
         await markWaitingOnCustomer()
@@ -412,22 +415,24 @@ export function ConversationActions({
       })
 
       if (res.ok) {
-        // Create outbound message record so it shows in the conversation thread
-        const now = new Date().toISOString()
-        await supabase.from('messages').insert({
-          conversation_id: conversationId,
-          account_id: accountId,
-          channel: channel,
-          sender_name: accountName,
-          sender_type: 'agent',
-          message_text: editText,
-          direction: 'outbound',
-          email_subject: emailSubject ? `Re: ${emailSubject}` : null,
-          replied: true,
-          reply_required: false,
-          timestamp: now,
-          received_at: now,
-        })
+        // For Teams: the teams-reply webhook creates the outbound message
+        if (channel !== 'teams') {
+          const now = new Date().toISOString()
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            account_id: accountId,
+            channel: channel,
+            sender_name: accountName,
+            sender_type: 'agent',
+            message_text: editText,
+            direction: 'outbound',
+            email_subject: emailSubject ? `Re: ${emailSubject}` : null,
+            replied: true,
+            reply_required: false,
+            timestamp: now,
+            received_at: now,
+          })
+        }
 
         toast.success('Reply sent successfully!')
         await markWaitingOnCustomer()
@@ -456,20 +461,23 @@ export function ConversationActions({
     try {
       const supabase = createClient()
 
-      // Create outbound message record
-      await supabase.from('messages').insert({
-        conversation_id: conversationId,
-        account_id: accountId,
-        channel: channel,
-        sender_name: accountName,
-        sender_type: 'agent',
-        message_text: manualText,
-        direction: 'outbound',
-        replied: true,
-        reply_required: false,
-        timestamp: new Date().toISOString(),
-        received_at: new Date().toISOString(),
-      })
+      // For Teams: the teams-reply webhook creates the outbound message
+      // For other channels: create it here
+      if (channel !== 'teams') {
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          account_id: accountId,
+          channel: channel,
+          sender_name: accountName,
+          sender_type: 'agent',
+          message_text: manualText,
+          direction: 'outbound',
+          replied: true,
+          reply_required: false,
+          timestamp: new Date().toISOString(),
+          received_at: new Date().toISOString(),
+        })
+      }
 
       // Send via n8n (channel-specific)
       const manualActionMap: Record<string, string> = {
