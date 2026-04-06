@@ -1,31 +1,65 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, FileText, Loader2, Copy, Check } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Sparkles, FileText, Loader2, Check } from 'lucide-react'
 
 interface SuggestedRepliesProps {
   conversationId: string
   latestMessage: string | null
   category: string | null
-  onInsert?: (text: string) => void
 }
 
-export function SuggestedReplies({ conversationId, latestMessage, category, onInsert }: SuggestedRepliesProps) {
+export function SuggestedReplies({ conversationId, latestMessage, category }: SuggestedRepliesProps) {
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const [templates, setTemplates] = useState<{ id: string; title: string; content: string }[]>([])
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [copied, setCopied] = useState<string | null>(null)
+  const [inserted, setInserted] = useState<string | null>(null)
 
   const handleInsert = (text: string) => {
-    if (onInsert) {
-      onInsert(text)
+    // Find the manual reply textarea and insert text directly
+    const textarea = document.querySelector('textarea[placeholder*="Type your reply"]') as HTMLTextAreaElement | null
+    if (textarea) {
+      textarea.value = text
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+      // Also trigger React's onChange by setting nativeInputValueSetter
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+      if (nativeSetter) {
+        nativeSetter.call(textarea, text)
+        textarea.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      textarea.focus()
+      setInserted(text)
+      setTimeout(() => setInserted(null), 2000)
     } else {
-      // Fallback: copy to clipboard
+      // Textarea not visible — trigger Manual Reply to open first, then copy
+      // Click the Manual Reply button
+      const manualBtn = document.querySelector('button')
+      const buttons = document.querySelectorAll('button')
+      for (const btn of buttons) {
+        if (btn.textContent?.includes('Manual Reply')) {
+          btn.click()
+          // Wait for textarea to appear, then insert
+          setTimeout(() => {
+            const ta = document.querySelector('textarea[placeholder*="Type your reply"]') as HTMLTextAreaElement | null
+            if (ta) {
+              const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+              if (setter) {
+                setter.call(ta, text)
+                ta.dispatchEvent(new Event('input', { bubbles: true }))
+              }
+              ta.focus()
+            }
+          }, 300)
+          setInserted(text)
+          setTimeout(() => setInserted(null), 2000)
+          return
+        }
+      }
+      // Last fallback: copy to clipboard
       navigator.clipboard.writeText(text)
-      setCopied(text)
-      setTimeout(() => setCopied(null), 2000)
+      setInserted(text)
+      setTimeout(() => setInserted(null), 2000)
     }
   }
 
@@ -48,39 +82,38 @@ export function SuggestedReplies({ conversationId, latestMessage, category, onIn
   }, [conversationId, latestMessage, category, loaded])
 
   if (!latestMessage) return null
+  if (!loading && aiSuggestions.length === 0 && templates.length === 0) return null
 
   return (
-    <div className="border-t border-gray-100 px-4 py-2">
-      <div className="flex items-center gap-4 overflow-x-auto pb-1">
+    <div className="shrink-0 border-t border-gray-100 bg-gray-50/50 px-4 py-2">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
         {loading && (
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
             <Loader2 className="h-3 w-3 animate-spin" />
             Generating suggestions...
           </div>
         )}
 
-        {/* AI suggestions */}
         {aiSuggestions.map((s, i) => (
           <button
             key={`ai-${i}`}
             onClick={() => handleInsert(s)}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-700 hover:bg-teal-100 transition-colors max-w-[250px]"
-            title={s}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-700 hover:bg-teal-100 active:bg-teal-200 transition-colors max-w-[280px]"
+            title={`Click to insert: ${s}`}
           >
-            <Sparkles className="h-3 w-3 shrink-0" />
-            <span className="truncate">{s.substring(0, 60)}{s.length > 60 ? '...' : ''}</span>
+            {inserted === s ? <Check className="h-3 w-3 shrink-0 text-green-600" /> : <Sparkles className="h-3 w-3 shrink-0" />}
+            <span className="truncate">{s.substring(0, 70)}{s.length > 70 ? '...' : ''}</span>
           </button>
         ))}
 
-        {/* Template suggestions */}
         {templates.map((t) => (
           <button
             key={`t-${t.id}`}
             onClick={() => handleInsert(t.content)}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs text-purple-700 hover:bg-purple-100 transition-colors max-w-[200px]"
-            title={t.content}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs text-purple-700 hover:bg-purple-100 active:bg-purple-200 transition-colors max-w-[220px]"
+            title={`Click to insert: ${t.content.substring(0, 100)}`}
           >
-            <FileText className="h-3 w-3 shrink-0" />
+            {inserted === t.content ? <Check className="h-3 w-3 shrink-0 text-green-600" /> : <FileText className="h-3 w-3 shrink-0" />}
             <span className="truncate">{t.title}</span>
           </button>
         ))}
