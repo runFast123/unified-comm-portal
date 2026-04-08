@@ -65,7 +65,7 @@ export default function AISettingsPage() {
   const [providerName, setProviderName] = useState('NVIDIA')
   const [baseUrl, setBaseUrl] = useState('https://integrate.api.nvidia.com/v1')
   const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState('moonshot-ai/kimi-k2.5')
+  const [model, setModel] = useState('moonshotai/kimi-k2.5')
   const [maxTokens, setMaxTokens] = useState(4096)
   const [temperature, setTemperature] = useState(1.0)
   const [showApiKey, setShowApiKey] = useState(false)
@@ -415,32 +415,38 @@ export default function AISettingsPage() {
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
               >
                 <optgroup label="Recommended">
-                  <option value="moonshot-ai/kimi-k2.5">Kimi K2.5 — Best quality (1T MoE, 200K context)</option>
+                  <option value="moonshotai/kimi-k2.5">Kimi K2.5 — Best quality (1T MoE, 200K context)</option>
                 </optgroup>
                 <optgroup label="Backup Models">
                   <option value="meta/llama-3.3-70b-instruct">Llama 3.3 70B — Free tier, reliable</option>
-                  <option value="openai/gpt-oss-120b">GPT-OSS 120B — Current default</option>
+                  <option value="openai/gpt-oss-120b">GPT-OSS 120B — Previous default</option>
                 </optgroup>
                 <optgroup label="Other NVIDIA Models">
                   <option value="z-ai/glm5">GLM-5 — Strong reasoning (744B MoE)</option>
-                  <option value="minimax/minimax-m2.5">MiniMax M2.5 — Fastest, cheapest</option>
-                  <option value="nvidia/nemotron-3-super">Nemotron 3 Super — NVIDIA&apos;s own</option>
+                  <option value="z-ai/glm4.7">GLM-4.7 — Fast reasoning</option>
+                  <option value="minimaxai/minimax-m2.5">MiniMax M2.5 — Fastest, cheapest</option>
+                  <option value="nvidia/nemotron-3-super-120b-a12b">Nemotron 3 Super 120B — NVIDIA&apos;s own</option>
                   <option value="meta/llama-3.1-405b-instruct">Llama 3.1 405B — Premium quality</option>
-                  <option value="qwen/qwen2.5-72b-instruct">Qwen 2.5 72B — Multilingual</option>
-                  <option value="deepseek-ai/deepseek-v3">DeepSeek V3 — Powerful (671B MoE)</option>
+                  <option value="qwen/qwen3.5-397b-a17b">Qwen 3.5 397B — Latest, multilingual</option>
+                  <option value="deepseek-ai/deepseek-v3.2">DeepSeek V3.2 — Powerful reasoning</option>
+                  <option value="moonshotai/kimi-k2-thinking">Kimi K2 Thinking — Deep reasoning</option>
+                  <option value="mistralai/mistral-large-3-675b-instruct-2512">Mistral Large 3 675B — Premium European</option>
                 </optgroup>
               </select>
               {/* Model info badge */}
               <div className="mt-2 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-                {model === 'moonshot-ai/kimi-k2.5' && '1T parameters (32B active) · 200K context · Best for KB-grounded replies · ~$0.05/1M tokens'}
+                {model === 'moonshotai/kimi-k2.5' && '1T parameters (32B active) · 200K context · Best for KB-grounded replies'}
                 {model === 'meta/llama-3.3-70b-instruct' && '70B parameters · Free tier available · Good all-rounder · Reliable structured output'}
                 {model === 'openai/gpt-oss-120b' && '120B parameters · General purpose · Average quality · Low cost'}
-                {model === 'z-ai/glm5' && '744B MoE · Strong reasoning + agentic tasks · ~$0.10/1M tokens'}
-                {model === 'minimax/minimax-m2.5' && '230B MoE (10B active) · Fastest inference · ~$0.01/1M tokens · Best for high volume'}
-                {model === 'nvidia/nemotron-3-super' && 'NVIDIA optimized · Good for enterprise agents · Free on NVIDIA'}
+                {model === 'z-ai/glm5' && '744B MoE · Strong reasoning + agentic tasks'}
+                {model === 'z-ai/glm4.7' && 'Fast reasoning model · Good for classification + replies'}
+                {model === 'minimaxai/minimax-m2.5' && '230B MoE (10B active) · Fastest inference · Best for high volume'}
+                {model === 'nvidia/nemotron-3-super-120b-a12b' && 'NVIDIA optimized 120B · 12B active · Good for enterprise agents'}
                 {model === 'meta/llama-3.1-405b-instruct' && '405B parameters · Highest quality open source · Premium cost'}
-                {model === 'qwen/qwen2.5-72b-instruct' && '72B parameters · Excellent multilingual · Good instruction following'}
-                {model === 'deepseek-ai/deepseek-v3' && '671B MoE · Very powerful · Great at coding + reasoning · ~$0.14/1M tokens'}
+                {model === 'qwen/qwen3.5-397b-a17b' && '397B MoE (17B active) · Latest Qwen · Excellent multilingual'}
+                {model === 'deepseek-ai/deepseek-v3.2' && 'DeepSeek latest · Very powerful · Great at coding + reasoning'}
+                {model === 'moonshotai/kimi-k2-thinking' && '1T MoE · Deep chain-of-thought reasoning · Best for complex tasks'}
+                {model === 'mistralai/mistral-large-3-675b-instruct-2512' && '675B parameters · Premium European model · Excellent instruction following'}
               </div>
             </div>
           </div>
