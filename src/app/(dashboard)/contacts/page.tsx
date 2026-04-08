@@ -311,7 +311,26 @@ export default function ContactsPage() {
         })
       }
 
-      // Compute engagement scores + AI auto-tags
+      // 4) Calculate top category per contact (must run BEFORE AI tags so Sales/Support tags work)
+      for (const contact of contactMap.values()) {
+        const catCounts: Record<string, number> = {}
+        for (const conv of contact.conversations) {
+          if (conv.category) {
+            catCounts[conv.category] = (catCounts[conv.category] || 0) + 1
+          }
+        }
+        const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]
+        contact.topCategory = topCat ? topCat[0] : null
+
+        // Sort conversations by date descending
+        contact.conversations.sort((a, b) => {
+          if (!a.lastMessageAt) return 1
+          if (!b.lastMessageAt) return -1
+          return b.lastMessageAt.localeCompare(a.lastMessageAt)
+        })
+      }
+
+      // 5) Compute engagement scores + AI auto-tags (after topCategory is set)
       for (const contact of contactMap.values()) {
         const recencyDays = contact.lastMessageAt
           ? Math.max(0, (Date.now() - new Date(contact.lastMessageAt).getTime()) / (1000 * 60 * 60 * 24))
@@ -329,25 +348,6 @@ export default function ContactsPage() {
         if (contact.topCategory === 'Sales Inquiry') tags.push('Sales')
         if (contact.topCategory === 'Trouble Ticket' || contact.topCategory === 'Technical Issue') tags.push('Support')
         contact.aiTags = tags
-      }
-
-      // 4) Calculate top category per contact
-      for (const contact of contactMap.values()) {
-        const catCounts: Record<string, number> = {}
-        for (const conv of contact.conversations) {
-          if (conv.category) {
-            catCounts[conv.category] = (catCounts[conv.category] || 0) + 1
-          }
-        }
-        const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]
-        contact.topCategory = topCat ? topCat[0] : null
-
-        // Sort conversations by date descending
-        contact.conversations.sort((a, b) => {
-          if (!a.lastMessageAt) return 1
-          if (!b.lastMessageAt) return -1
-          return b.lastMessageAt.localeCompare(a.lastMessageAt)
-        })
       }
 
       setContacts(Array.from(contactMap.values()))

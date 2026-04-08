@@ -296,7 +296,7 @@ export function ConversationActions({
 
   const handleApprove = useCallback(async () => {
     if (!aiReplyId) return
-    if (!participantEmail) {
+    if (!participantEmail && channel !== 'teams') {
       toast.error('No recipient email address found')
       return
     }
@@ -374,7 +374,7 @@ export function ConversationActions({
   }, [aiReplyId, accountId, accountName, aiDraftText, conversationId, participantEmail, router, toast, channel, emailSubject, teamsChatId])
 
   const handleEditSend = useCallback(async () => {
-    if (!participantEmail) {
+    if (!participantEmail && channel !== 'teams') {
       toast.error('No recipient email address found')
       return
     }
@@ -454,7 +454,7 @@ export function ConversationActions({
   }, [editText, aiReplyId, accountId, accountName, participantEmail, conversationId, router, toast, channel, emailSubject, teamsChatId])
 
   const handleManualReply = useCallback(async () => {
-    if (!participantEmail) {
+    if (!participantEmail && channel !== 'teams') {
       toast.error('No recipient email address found')
       return
     }
@@ -473,6 +473,7 @@ export function ConversationActions({
         sender_name: accountName.replace(/\s+Teams$/i, ''),
         sender_type: 'agent',
         message_text: manualText,
+        email_subject: emailSubject || null,
         direction: 'outbound',
         attachments: null,
         replied: true,
