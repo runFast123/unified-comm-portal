@@ -138,6 +138,7 @@ async function processReply(
       .from('messages')
       .select('id')
       .eq('conversation_id', conversationId)
+      .eq('channel', 'email')
       .eq('direction', 'outbound')
       .eq('teams_message_id', message_id) // Reuse teams_message_id for Gmail message ID dedup
       .maybeSingle()

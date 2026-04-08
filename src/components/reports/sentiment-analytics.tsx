@@ -201,6 +201,7 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
           category,
           classified_at,
           messages!inner (
+            message_text,
             account_id,
             conversation_id,
             sender_name,

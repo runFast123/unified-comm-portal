@@ -34,7 +34,6 @@ export function SuggestedReplies({ conversationId, latestMessage, category }: Su
     } else {
       // Textarea not visible — trigger Manual Reply to open first, then copy
       // Click the Manual Reply button
-      const manualBtn = document.querySelector('button')
       const buttons = document.querySelectorAll('button')
       for (const btn of buttons) {
         if (btn.textContent?.includes('Manual Reply')) {

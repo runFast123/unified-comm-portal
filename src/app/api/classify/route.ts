@@ -157,16 +157,22 @@ export async function POST(request: Request) {
       )
     }
 
+    // Fetch conversation_id once for routing and escalation logic
+    let routingConversationId: string | null = null
+    {
+      const { data: msgForRouting } = await supabase
+        .from('messages')
+        .select('conversation_id')
+        .eq('id', message_id)
+        .maybeSingle()
+      routingConversationId = msgForRouting?.conversation_id || null
+    }
+
     // AI Conversation Routing: auto-assign urgent/high messages to least-loaded admin
     if ((classification.urgency === 'urgent' || classification.urgency === 'high') && classification.category !== 'Newsletter/Marketing') {
       try {
-        const { data: msg } = await supabase
-          .from('messages')
-          .select('conversation_id')
-          .eq('id', message_id)
-          .maybeSingle()
-
-        if (msg?.conversation_id) {
+        if (routingConversationId) {
+          const msg = { conversation_id: routingConversationId }
           // Check if conversation is already assigned
           const { data: conv } = await supabase
             .from('conversations')
@@ -229,14 +235,8 @@ export async function POST(request: Request) {
     // Auto-escalate: if sentiment is negative AND urgency is high/urgent, escalate the conversation
     if (classification.sentiment === 'negative' && (classification.urgency === 'high' || classification.urgency === 'urgent')) {
       try {
-        // Get the conversation_id from the message
-        const { data: msg } = await supabase
-          .from('messages')
-          .select('conversation_id')
-          .eq('id', message_id)
-          .maybeSingle()
-
-        if (msg?.conversation_id) {
+        if (routingConversationId) {
+          const msg = { conversation_id: routingConversationId }
           // Check if conversation is already escalated
           const { data: conv } = await supabase
             .from('conversations')

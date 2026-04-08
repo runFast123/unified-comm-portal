@@ -219,7 +219,7 @@ export async function POST(request: Request) {
         if (classifyRes.ok) {
           try {
             const classifyData = await classifyRes.json()
-            if (classifyData?.classification?.category === 'Newsletter/Marketing' || classifyData?.classification?.is_spam) {
+            if (classifyData?.category === 'Newsletter/Marketing' || classifyData?.is_spam) {
               skipAIReply = true
             }
           } catch { /* ignore parse error */ }

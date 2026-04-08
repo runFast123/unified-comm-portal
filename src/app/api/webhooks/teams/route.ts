@@ -119,7 +119,7 @@ export async function POST(request: Request) {
         .select('id')
         .eq('account_id', account_id)
         .eq('direction', 'outbound')
-        .eq('message_text', messageText.substring(0, 200))
+        .like('message_text', messageText.substring(0, 100).replace(/%/g, '\\%').replace(/_/g, '\\_') + '%')
         .gte('timestamp', fiveMinAgo)
         .limit(1)
         .maybeSingle()

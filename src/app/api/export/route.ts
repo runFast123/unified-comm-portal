@@ -40,6 +40,13 @@ export async function GET(request: Request) {
       accountId = profile.account_id
     }
 
+    // Escape CSV values to prevent formula injection (=, +, -, @, tab, CR)
+    const safeCSV = (val: string): string => {
+      const escaped = val.replace(/"/g, '""')
+      if (/^[=+\-@\t\r]/.test(escaped)) return `'${escaped}`
+      return escaped
+    }
+
     let csvContent = ''
     let filename = ''
 
@@ -62,14 +69,6 @@ export async function GET(request: Request) {
 
       const { data: messages, error } = await query
       if (error) throw error
-
-      // Build CSV
-      // Escape CSV values to prevent formula injection (=, +, -, @, tab, CR)
-      const safeCSV = (val: string): string => {
-        const escaped = val.replace(/"/g, '""')
-        if (/^[=+\-@\t\r]/.test(escaped)) return `'${escaped}`
-        return escaped
-      }
 
       const headers = ['Date', 'Account', 'Sender', 'Subject', 'Channel', 'Category', 'Sentiment', 'Urgency', 'Confidence', 'Replied', 'Message Preview']
       const rows = (messages || []).map((m: any) => [
@@ -114,13 +113,13 @@ export async function GET(request: Request) {
           : ''
         return [
           new Date(r.created_at).toISOString().split('T')[0],
-          r.accounts?.name || '',
-          (r.messages?.sender_name || '').replace(/"/g, '""'),
-          (r.messages?.email_subject || '').replace(/"/g, '""'),
+          safeCSV(r.accounts?.name || ''),
+          safeCSV(r.messages?.sender_name || ''),
+          safeCSV(r.messages?.email_subject || ''),
           r.status || '',
           r.channel || '',
           responseTime,
-          (r.draft_text || '').substring(0, 200).replace(/"/g, '""').replace(/\n/g, ' '),
+          safeCSV((r.draft_text || '').substring(0, 200).replace(/\n/g, ' ')),
         ]
       })
 
