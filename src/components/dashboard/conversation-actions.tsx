@@ -51,25 +51,25 @@ export function ConversationActions({
 }: ConversationActionsProps) {
   const router = useRouter()
   const { toast } = useToast()
-  const supabaseRef = createClient()
   const [loading, setLoading] = useState<string | null>(null)
 
   // Helper: update conversation status + mark inbound messages as replied
   const markWaitingOnCustomer = useCallback(async () => {
     try {
-      await supabaseRef
+      const supabase = createClient()
+      await supabase
         .from('conversations')
         .update({ status: 'waiting_on_customer' })
         .eq('id', conversationId)
       // Mark all unreplied inbound messages as replied
-      await supabaseRef
+      await supabase
         .from('messages')
         .update({ replied: true })
         .eq('conversation_id', conversationId)
         .eq('direction', 'inbound')
         .eq('replied', false)
     } catch { /* non-critical */ }
-  }, [conversationId, supabaseRef])
+  }, [conversationId])
   const [showManualReply, setShowManualReply] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [showEditReply, setShowEditReply] = useState(false)

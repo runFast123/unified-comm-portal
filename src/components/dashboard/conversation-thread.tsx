@@ -492,14 +492,15 @@ export function ConversationThread({ messages, channel }: ConversationThreadProp
 
             {responseTimeIndicator}
 
-            {channel === 'email' && (
+            {channel === 'email' ? (
               <EmailMessage message={message} isOutbound={isOutbound} />
-            )}
-            {channel === 'teams' && (
+            ) : channel === 'teams' ? (
               <TeamsBubble message={message} isOutbound={isOutbound} />
-            )}
-            {channel === 'whatsapp' && (
+            ) : channel === 'whatsapp' ? (
               <WhatsAppBubble message={message} isOutbound={isOutbound} />
+            ) : (
+              /* Fallback for unknown channel types */
+              <TeamsBubble message={message} isOutbound={isOutbound} />
             )}
           </div>
         )

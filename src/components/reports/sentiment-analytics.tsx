@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ReportCard } from '@/components/reports/report-card'
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +38,7 @@ function SentimentTableModal({ title, messages, onClose, initialFilter }: {
   onClose: () => void
   initialFilter?: 'all' | 'positive' | 'neutral' | 'negative'
 }) {
+  const router = useRouter()
   const [filter, setFilter] = useState<'all' | 'positive' | 'neutral' | 'negative'>(initialFilter || 'all')
   const filtered = filter === 'all' ? messages : messages.filter(m => m.sentiment === filter)
   const posCount = messages.filter(m => m.sentiment === 'positive').length
@@ -88,40 +90,38 @@ function SentimentTableModal({ title, messages, onClose, initialFilter }: {
               {filtered.length === 0 && (
                 <tr><td colSpan={3} className="px-5 py-8 text-center text-xs text-gray-400">No messages match this filter</td></tr>
               )}
-              {filtered.map((m, i) => {
-                const row = (
-                  <tr key={i} className={cn(
-                    'transition-colors cursor-pointer',
+              {filtered.map((m, i) => (
+                <tr
+                  key={i}
+                  onClick={() => m.conversationId && router.push(`/conversations/${m.conversationId}`)}
+                  className={cn(
+                    'transition-colors',
+                    m.conversationId ? 'cursor-pointer' : '',
                     m.sentiment === 'positive' ? 'hover:bg-green-50' : m.sentiment === 'negative' ? 'hover:bg-red-50' : 'hover:bg-gray-50'
-                  )}>
-                    <td className="px-5 py-3">
-                      <span className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-                        m.sentiment === 'positive' ? 'bg-green-100 text-green-700' :
-                        m.sentiment === 'negative' ? 'bg-red-100 text-red-700' :
-                        'bg-gray-100 text-gray-600'
-                      )}>
-                        <span className={cn('h-2 w-2 rounded-full',
-                          m.sentiment === 'positive' ? 'bg-green-500' : m.sentiment === 'negative' ? 'bg-red-500' : 'bg-gray-400'
-                        )} />
-                        {m.sentiment === 'positive' ? 'Pos' : m.sentiment === 'negative' ? 'Neg' : 'Neu'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-xs font-medium text-gray-800 truncate max-w-[120px]">{m.senderName || 'Unknown'}</td>
-                    <td className="px-5 py-3 text-xs text-gray-600 leading-relaxed">
-                      <span className="line-clamp-2">{m.preview || 'No message text'}</span>
-                      {m.conversationId && (
-                        <span className="text-[10px] text-teal-600 ml-1">→ View conversation</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-                return m.conversationId ? (
-                  <Link key={i} href={`/conversations/${m.conversationId}`} className="contents">
-                    {row}
-                  </Link>
-                ) : row
-              })}
+                  )}
+                >
+                  <td className="px-5 py-3">
+                    <span className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
+                      m.sentiment === 'positive' ? 'bg-green-100 text-green-700' :
+                      m.sentiment === 'negative' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-600'
+                    )}>
+                      <span className={cn('h-2 w-2 rounded-full',
+                        m.sentiment === 'positive' ? 'bg-green-500' : m.sentiment === 'negative' ? 'bg-red-500' : 'bg-gray-400'
+                      )} />
+                      {m.sentiment === 'positive' ? 'Pos' : m.sentiment === 'negative' ? 'Neg' : 'Neu'}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-xs font-medium text-gray-800 truncate max-w-[120px]">{m.senderName || 'Unknown'}</td>
+                  <td className="px-5 py-3 text-xs text-gray-600 leading-relaxed">
+                    <span className="line-clamp-2">{m.preview || 'No message text'}</span>
+                    {m.conversationId && (
+                      <span className="text-[10px] text-teal-600 ml-1">→ View</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -452,7 +452,7 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
       setCategories(
         Object.entries(catMap)
           .map(([category, data]) => ({ category, ...data, messages: data.messages }))
-          .sort((a, b) => (b.negative / b.total) - (a.negative / a.total))
+          .sort((a, b) => (b.total > 0 ? b.negative / b.total : 0) - (a.total > 0 ? a.negative / a.total : 0))
       )
 
       setLoading(false)
