@@ -37,6 +37,7 @@ import type { DashboardKPIs } from '@/types/database'
 import type { AccountOverview } from '@/types/database'
 import type { ChannelType } from '@/types/database'
 import { useUser } from '@/context/user-context'
+import { WidgetCustomizer, useWidgetVisibility } from '@/components/dashboard/widget-customizer'
 
 const ACCOUNT_FILTER_KEY = 'dashboard-account-filter'
 
@@ -151,6 +152,7 @@ function getChannelColoredIcon(channel: ChannelType) {
 export default function DashboardPage() {
   const router = useRouter()
   const { isAdmin, account_id: userAccountId } = useUser()
+  const { visible: widgetVisibility, setVisible: setWidgetVisibility, isVisible: isWidgetVisible } = useWidgetVisibility()
   const [channelFilter, setChannelFilter] = useState<ChannelFilterValue>('all')
   const [dateRange, setDateRange] = useState<DateRange>('today')
   const [loading, setLoading] = useState(true)
@@ -850,10 +852,16 @@ export default function DashboardPage() {
               : `Unified overview across all ${accounts.length} accounts`}
           </p>
         </div>
-        <ChannelFilter
-          activeChannel={channelFilter}
-          onChange={setChannelFilter}
-        />
+        <div className="flex items-center gap-2">
+          <ChannelFilter
+            activeChannel={channelFilter}
+            onChange={setChannelFilter}
+          />
+          <WidgetCustomizer
+            visible={widgetVisibility}
+            onChange={setWidgetVisibility}
+          />
+        </div>
       </div>
 
       {/* Date Range Selector + Account Filter */}
@@ -987,7 +995,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 [&>div]:min-w-0">
+      {isWidgetVisible('kpis') && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 [&>div]:min-w-0">
         <div onClick={() => handleDashKpiClick('total')} className={`cursor-pointer relative rounded-xl border bg-gradient-to-br from-blue-50 to-blue-100 p-5 shadow-sm transition-all hover:shadow-lg ${dashDrill === 'total' ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-200'}`}>
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-blue-600" />
           <div className="flex items-start justify-between">
@@ -1109,10 +1117,10 @@ export default function DashboardPage() {
             color="text-amber-600"
           />
         </div>
-      </div>
+      </div>}
 
       {/* SLA Performance + Spam */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {isWidgetVisible('sla') && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="relative rounded-xl border border-gray-200 bg-gradient-to-br from-indigo-50 to-indigo-100 p-5 shadow-sm">
           <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-indigo-600" />
           <div className="flex items-start justify-between">
@@ -1182,7 +1190,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* KPI Drill-down Panel */}
       {dashDrill && (
@@ -1280,7 +1288,7 @@ export default function DashboardPage() {
       )}
 
       {/* Channel Breakdown + Category Breakdown */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 animate-slide-up stagger-2 [&>*]:min-w-0">
+      {(isWidgetVisible('channels') || isWidgetVisible('categories')) && <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 animate-slide-up stagger-2 [&>*]:min-w-0">
         {/* Channel Breakdown */}
         <Card title="Channel Breakdown" description={`Message volume by channel ${getDateRangeLabel(dateRange)}`}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>div]:min-w-0">
@@ -1348,10 +1356,10 @@ export default function DashboardPage() {
             </div>
           )}
         </Card>
-      </div>
+      </div>}
 
       {/* Escalated Conversations */}
-      {escalatedConversations.length > 0 && (
+      {isWidgetVisible('escalated') && escalatedConversations.length > 0 && (
         <Card
           title={`Escalated Conversations (${escalatedConversations.length})`}
           description="Conversations requiring urgent attention"
@@ -1394,16 +1402,16 @@ export default function DashboardPage() {
       )}
 
       {/* Activity Feed */}
-      <Card
+      {isWidgetVisible('activity') && <Card
         title="Activity Feed"
         description="Real-time activity across all channels"
         className="animate-slide-up stagger-3"
       >
         <ActivityFeed />
-      </Card>
+      </Card>}
 
       {/* Accounts Overview Table */}
-      <Card
+      {isWidgetVisible('accounts') && <Card
         title="Accounts Overview"
         description={isAccountFiltered ? `Showing ${filteredAccounts.length} of ${accounts.length} accounts` : `All ${accounts.length} active company accounts`}
         className="animate-slide-up stagger-4"
@@ -1413,10 +1421,10 @@ export default function DashboardPage() {
         ) : (
           <AccountsTable accounts={filteredAccounts} filter={channelFilter} />
         )}
-      </Card>
+      </Card>}
 
       {/* Company Performance */}
-      <Card
+      {isWidgetVisible('company') && <Card
         title="Company Performance"
         description={`Per-account metrics for the selected period`}
         className="animate-slide-up stagger-5"
@@ -1428,7 +1436,7 @@ export default function DashboardPage() {
             return true
           })}
         />
-      </Card>
+      </Card>}
     </div>
   )
 }

@@ -297,6 +297,17 @@ export default async function ConversationPage({
       <MarkRead conversationId={id} />
       <ConversationRealtime conversationId={id} />
 
+      {/* Follow-up reminder for conversations waiting >48h */}
+      {status === 'waiting_on_customer' && lastMsgAt && lastReplyMs > 48 * 60 * 60 * 1000 && (
+        <div className="shrink-0 mx-4 sm:mx-6 mt-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 flex items-center gap-3">
+          <span className="text-amber-500 text-lg">⏰</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800">Customer hasn&apos;t replied in {formatDuration(lastReplyMs)}</p>
+            <p className="text-xs text-amber-600">Consider sending a follow-up to keep the conversation active.</p>
+          </div>
+        </div>
+      )}
+
       {/* Main content area */}
       <div className="flex flex-1 flex-col lg:flex-row overflow-hidden">
         {/* Message thread */}

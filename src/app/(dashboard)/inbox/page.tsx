@@ -2,18 +2,19 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { CheckSquare, CheckCheck, Archive, UserPlus, Loader2, Inbox, List, Columns, X, Sparkles, User, ShieldAlert, ShieldCheck, Mail } from 'lucide-react'
+import { CheckSquare, CheckCheck, Archive, UserPlus, Loader2, Inbox, List, Columns, LayoutGrid, X, Sparkles, User, ShieldAlert, ShieldCheck, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InboxList } from '@/components/inbox/inbox-list'
 import { InboxFiltersBar, type InboxFilters } from '@/components/inbox/inbox-filters'
 import { InboxPreview } from '@/components/inbox/inbox-preview'
+import { InboxKanban } from '@/components/inbox/inbox-kanban'
 import { createClient } from '@/lib/supabase-client'
 import { useToast } from '@/components/ui/toast'
 import { useRealtimeMessages } from '@/hooks/useRealtimeMessages'
 import type { InboxItem, Priority } from '@/types/database'
 import { useUser } from '@/context/user-context'
 
-type ViewMode = 'list' | 'split'
+type ViewMode = 'list' | 'split' | 'kanban'
 
 const defaultFilters: InboxFilters = {
   channel: 'all',
@@ -101,7 +102,7 @@ export default function InboxPage() {
   // Load view mode from localStorage after mount (avoids hydration mismatch)
   useEffect(() => {
     const stored = localStorage.getItem('inbox-view-mode') as ViewMode | null
-    if (stored === 'list' || stored === 'split') setViewMode(stored)
+    if (stored === 'list' || stored === 'split' || stored === 'kanban') setViewMode(stored)
   }, [])
   const [selectedItem, setSelectedItem] = useState<InboxItem | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -581,6 +582,18 @@ export default function InboxPage() {
               <Columns size={14} />
               Split
             </button>
+            <button
+              onClick={() => handleViewModeChange('kanban')}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === 'kanban'
+                  ? 'bg-teal-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+              title="Kanban board"
+            >
+              <LayoutGrid size={14} />
+              Board
+            </button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -612,12 +625,25 @@ export default function InboxPage() {
             variant="secondary"
             size="sm"
             className="hidden sm:inline-flex"
-            onClick={() => {
-              toast.info('Assign All: Coming soon')
+            onClick={async () => {
+              const ids = selectedIds.size > 0
+                ? filteredItems.filter(i => selectedIds.has(i.id)).map(i => i.conversation_id)
+                : []
+              if (ids.length === 0) { toast.warning('Select messages first'); return }
+              const supabase = createClient()
+              // Assign to current user
+              const { data: { user } } = await supabase.auth.getUser()
+              if (!user) return
+              const { error } = await supabase
+                .from('conversations')
+                .update({ assigned_to: user.id })
+                .in('id', ids)
+              if (error) toast.error('Failed to assign')
+              else { toast.success(`Assigned ${ids.length} conversation(s) to you`); clearSelection() }
             }}
           >
             <UserPlus className="h-4 w-4" />
-            Assign All
+            Assign to Me
           </Button>
           <Button
             variant="secondary"
@@ -1006,6 +1032,11 @@ export default function InboxPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Kanban board view */}
+      {!loading && !error && inboxView === 'inbox' && filteredItems.length > 0 && viewMode === 'kanban' && (
+        <InboxKanban items={filteredItems} />
       )}
     </div>
   )

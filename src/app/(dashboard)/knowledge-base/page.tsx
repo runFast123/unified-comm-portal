@@ -158,6 +158,19 @@ function GapAnalysis() {
                 <span className="text-xs text-gray-400">{gap.account_name}</span>
               )}
               <span className="text-xs text-gray-400">{timeAgo(gap.timestamp)}</span>
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const title = `${gap.account_name || 'General'} - ${gap.category || 'FAQ'} Gap`
+                  const content = `## Topic\n${gap.message_text.substring(0, 200)}\n\n## Answer\n[Draft your answer here based on the customer question above]\n\n## Related Information\n- Category: ${gap.category || 'General'}\n- Confidence was low (${Math.round(gap.confidence * 100)}%) — this topic needs KB coverage`
+                  navigator.clipboard.writeText(`Title: ${title}\n\n${content}`)
+                  alert('KB article draft copied to clipboard! Paste it in the "Add Article" form.')
+                }}
+                className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700 hover:bg-teal-100 transition-colors"
+              >
+                Draft Article
+              </button>
             </div>
           </div>
 

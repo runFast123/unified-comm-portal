@@ -157,6 +157,59 @@ export async function POST(request: Request) {
       )
     }
 
+    // AI Conversation Routing: auto-assign urgent/high messages to least-loaded admin
+    if ((classification.urgency === 'urgent' || classification.urgency === 'high') && classification.category !== 'Newsletter/Marketing') {
+      try {
+        const { data: msg } = await supabase
+          .from('messages')
+          .select('conversation_id')
+          .eq('id', message_id)
+          .maybeSingle()
+
+        if (msg?.conversation_id) {
+          // Check if conversation is already assigned
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('assigned_to')
+            .eq('id', msg.conversation_id)
+            .maybeSingle()
+
+          if (conv && !conv.assigned_to) {
+            // Find least-loaded active agent
+            const { data: agents } = await supabase
+              .from('users')
+              .select('id, full_name')
+              .eq('is_active', true)
+              .in('role', ['admin', 'reviewer'])
+
+            if (agents && agents.length > 0) {
+              // Count active conversations per agent
+              const agentLoads = await Promise.all(
+                agents.map(async (agent: any) => {
+                  const { count } = await supabase
+                    .from('conversations')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('assigned_to', agent.id)
+                    .in('status', ['active', 'in_progress', 'escalated'])
+                  return { id: agent.id, name: agent.full_name, load: count || 0 }
+                })
+              )
+              const leastLoaded = agentLoads.sort((a, b) => a.load - b.load)[0]
+              if (leastLoaded) {
+                await supabase
+                  .from('conversations')
+                  .update({ assigned_to: leastLoaded.id })
+                  .eq('id', msg.conversation_id)
+                console.log(`[AUTO-ROUTE] Conversation ${msg.conversation_id} assigned to ${leastLoaded.name} (${leastLoaded.load} active)`)
+              }
+            }
+          }
+        }
+      } catch (routeErr) {
+        console.error('Auto-routing failed:', routeErr)
+      }
+    }
+
     // If AI classified as Newsletter/Marketing with high confidence, mark as spam
     if (classification.category === 'Newsletter/Marketing' && classification.confidence > 0.7) {
       const { error: spamUpdateError } = await supabase
