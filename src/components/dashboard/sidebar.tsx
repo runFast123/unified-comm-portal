@@ -89,7 +89,9 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
   }
 
   const linkClasses = (href: string) =>
-    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+    `relative flex items-center rounded-lg text-sm font-medium transition-colors ${
+      collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2'
+    } ${
       isActive(href)
         ? 'bg-primary text-primary-foreground'
         : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
@@ -116,14 +118,14 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-200 ease-in-out lg:translate-x-0 lg:static lg:z-auto ${
-          collapsed ? 'lg:w-[68px]' : 'lg:w-64'
+          collapsed ? 'lg:w-[68px] overflow-hidden' : 'lg:w-64'
         } w-64 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Logo / Brand */}
-        <div className="flex h-16 items-center justify-between px-4 border-b border-sidebar-border">
-          <Link href="/dashboard" className="flex items-center gap-3">
+        <div className={`flex h-16 items-center border-b border-sidebar-border ${collapsed ? 'justify-center px-2' : 'justify-between px-4'}`}>
+          <Link href="/dashboard" className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm shrink-0">
               <MessageSquare className="h-5 w-5" />
             </div>
@@ -155,7 +157,14 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
               <item.icon className="h-5 w-5 flex-shrink-0" />
               {!collapsed && <span className="flex-1">{item.label}</span>}
               {item.badge && pendingCount > 0 && (
-                <span className={`relative flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white ${collapsed ? 'absolute -top-1 -right-1 h-4 min-w-[16px] text-[10px]' : ''}`} aria-label={`${pendingCount} pending messages`}>
+                <span
+                  className={`flex items-center justify-center rounded-full bg-red-500 font-semibold text-white ${
+                    collapsed
+                      ? 'absolute -top-1.5 -right-1.5 h-[18px] min-w-[18px] px-1 text-[10px]'
+                      : 'relative h-5 min-w-[20px] px-1.5 text-xs'
+                  }`}
+                  aria-label={`${pendingCount} pending messages`}
+                >
                   {hasNewMessages && (
                     <span className="absolute -inset-1 rounded-full bg-red-400 opacity-75 animate-ping" aria-hidden="true" />
                   )}
@@ -168,13 +177,14 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
           {/* Admin Section */}
           {user.role === 'admin' && (
             <>
-              <div className="pt-6 pb-2 px-3">
-                {!collapsed && (
+              <div className={collapsed ? 'pt-4 pb-2 px-2' : 'pt-6 pb-2 px-3'}>
+                {!collapsed ? (
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Admin
                   </p>
+                ) : (
+                  <div className="border-t border-sidebar-border" />
                 )}
-                {collapsed && <div className="border-t border-sidebar-border" />}
               </div>
               {adminNavItems.map((item) => (
                 <Link
@@ -206,8 +216,8 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
         </div>
 
         {/* User Info */}
-        <div className="border-t border-sidebar-border p-4">
-          <div className="flex items-center gap-3">
+        <div className={`border-t border-sidebar-border ${collapsed ? 'p-2' : 'p-4'}`}>
+          <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-medium text-accent-foreground shrink-0">
               {initials}
             </div>
@@ -223,7 +233,9 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
           <form action={signOut}>
             <button
               type="submit"
-              className="mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              className={`mt-2 flex w-full items-center rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors ${
+                collapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2'
+              }`}
               title={collapsed ? 'Sign out' : undefined}
             >
               <LogOut className="h-4 w-4 shrink-0" />
