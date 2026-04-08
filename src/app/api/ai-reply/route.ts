@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     // Allow internal calls (from webhook handlers) via webhook secret, or authenticated users
     const webhookSecret = request.headers.get('x-webhook-secret')
     const expectedSecret = process.env.N8N_WEBHOOK_SECRET
-    const isInternalCall = webhookSecret === expectedSecret
+    const isInternalCall = !!expectedSecret && webhookSecret === expectedSecret
 
     let authenticatedUserId: string | null = null
 
@@ -252,14 +252,14 @@ export async function POST(request: Request) {
       kbContext = '\n\n--- Company Knowledge Base ---\nYou MUST use ONLY the following knowledge base to answer. Do NOT use any external knowledge. If the answer is not in the KB, say you will connect them with the commercial team.\n\n'
 
       if (identityArticle) {
-        kbContext += `[COMPANY IDENTITY & RULES]\n${identityArticle.content.substring(0, 4000)}\n\n`
+        kbContext += `[COMPANY IDENTITY & RULES]\n${(identityArticle.content || '').substring(0, 4000)}\n\n`
         matchedKbIds.push(identityArticle.id)
       }
 
       // Include top scored articles with more content (up to 6000 chars each)
       const topArticles = scoredArticles.slice(0, 3)
       topArticles.forEach((kb: any, i: number) => {
-        kbContext += `[${kb.title}]\n${kb.content.substring(0, 6000)}\n\n`
+        kbContext += `[${kb.title}]\n${(kb.content || '').substring(0, 6000)}\n\n`
         matchedKbIds.push(kb.id)
       })
 
@@ -346,7 +346,7 @@ export async function POST(request: Request) {
     // +0.15 if KB articles were matched (AI has company knowledge)
     if (matchedKbIds.length > 0) confidenceScore += 0.15
     // +0.05 per additional KB article (max +0.15 for 3)
-    confidenceScore += Math.min(matchedKbIds.length - 1, 3) * 0.05
+    confidenceScore += Math.min(Math.max(matchedKbIds.length - 1, 0), 3) * 0.05
 
     // +0.1 if conversation history exists (AI has context)
     if (recentMessages && recentMessages.length > 2) confidenceScore += 0.1

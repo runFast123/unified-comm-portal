@@ -51,6 +51,11 @@ export function InboxKanban({ items }: InboxKanbanProps) {
             {grouped[col.key].length === 0 && (
               <p className="text-xs text-gray-400 text-center py-4">No conversations</p>
             )}
+            {grouped[col.key].length > 20 && (
+              <p className="text-xs text-center text-amber-600 bg-amber-50 rounded py-1 mb-1">
+                Showing 20 of {grouped[col.key].length}
+              </p>
+            )}
             {grouped[col.key].slice(0, 20).map(item => (
               <Link
                 key={item.id}
@@ -63,7 +68,7 @@ export function InboxKanban({ items }: InboxKanbanProps) {
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 truncate mb-2">
-                  {item.subject_or_preview?.substring(0, 60)}
+                  {item.subject_or_preview?.substring(0, 60) || 'No preview'}
                 </p>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1">

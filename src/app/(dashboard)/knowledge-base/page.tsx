@@ -181,8 +181,6 @@ function GapAnalysis() {
   )
 }
 
-const supabase = createClient()
-
 interface AccountOption {
   id: string
   name: string
@@ -217,6 +215,7 @@ function getCategoryVariant(category: string): 'info' | 'warning' | 'success' | 
 // ---------------------------------------------------------------------------
 
 export default function KnowledgeBasePage() {
+  const supabase = createClient()
   const { isAdmin, account_id: userAccountId } = useUser()
   const [articles, setArticles] = useState<KBArticle[]>([])
   const [loading, setLoading] = useState(true)

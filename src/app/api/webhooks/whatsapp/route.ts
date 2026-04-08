@@ -103,6 +103,41 @@ export async function POST(request: Request) {
       )
     }
 
+    // Validate sender_phone and message content
+    if (!sender_phone) {
+      return NextResponse.json(
+        { error: 'Missing required field: sender_phone' },
+        { status: 400 }
+      )
+    }
+    if (!messageText || messageText.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'Empty message — nothing to process' },
+        { status: 400 }
+      )
+    }
+
+    // Dedup check: skip if same text from same sender within 2 minutes
+    const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    const { data: existingMsg } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('account_id', account_id)
+      .eq('channel', 'whatsapp')
+      .eq('direction', 'inbound')
+      .like('sender_name', sender_phone)
+      .like('message_text', messageText.substring(0, 100).replace(/%/g, '\\%').replace(/_/g, '\\_') + '%')
+      .gte('timestamp', twoMinAgo)
+      .limit(1)
+      .maybeSingle()
+
+    if (existingMsg) {
+      return NextResponse.json(
+        { message: 'Duplicate - already processed', message_id: existingMsg.id },
+        { status: 200 }
+      )
+    }
+
     // Find or create conversation
     const conversationId = await findOrCreateConversation(supabase, {
       account_id,
@@ -162,10 +197,11 @@ export async function POST(request: Request) {
     const account = await getAccountSettings(supabase, account_id)
 
     // Phase 1: AI Classification
+    let skipAIReply = false
+    const origin = new URL(request.url).origin
     if (account.phase1_enabled) {
       try {
-        const origin = new URL(request.url).origin
-        await fetch(`${origin}/api/classify`, {
+        const classifyRes = await fetch(`${origin}/api/classify`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -179,15 +215,23 @@ export async function POST(request: Request) {
           }),
           signal: AbortSignal.timeout(30000),
         })
+        // Check if classified as spam/newsletter → skip Phase 2
+        if (classifyRes.ok) {
+          try {
+            const classifyData = await classifyRes.json()
+            if (classifyData?.classification?.category === 'Newsletter/Marketing' || classifyData?.classification?.is_spam) {
+              skipAIReply = true
+            }
+          } catch { /* ignore parse error */ }
+        }
       } catch (classifyError) {
         console.error(`Phase 1 classification failed [message_id=${message.id}, account_id=${account_id}, channel=whatsapp]:`, classifyError instanceof Error ? classifyError.message : classifyError)
       }
     }
 
-    // Phase 2: AI Reply Generation
-    if (account.phase2_enabled) {
+    // Phase 2: AI Reply Generation (skip for spam/newsletter)
+    if (account.phase2_enabled && !skipAIReply) {
       try {
-        const origin = new URL(request.url).origin
         await fetch(`${origin}/api/ai-reply`, {
           method: 'POST',
           headers: {

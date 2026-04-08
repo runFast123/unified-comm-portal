@@ -113,12 +113,13 @@ export function AgentAssignment({
     if (name) {
       return name
         .split(' ')
+        .filter(Boolean)
         .map((n) => n[0])
         .join('')
         .toUpperCase()
-        .slice(0, 2)
+        .slice(0, 2) || '?'
     }
-    return email[0].toUpperCase()
+    return email && email.length > 0 ? email[0].toUpperCase() : '?'
   }
 
   return (

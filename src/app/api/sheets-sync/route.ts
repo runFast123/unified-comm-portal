@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     // Allow internal calls via webhook secret, or authenticated users
     const webhookSecret = request.headers.get('x-webhook-secret')
     const expectedSecret = process.env.N8N_WEBHOOK_SECRET
-    const isInternalCall = webhookSecret === expectedSecret
+    const isInternalCall = !!expectedSecret && webhookSecret === expectedSecret
 
     if (!isInternalCall) {
       // Check for authenticated user session

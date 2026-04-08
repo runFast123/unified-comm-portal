@@ -46,20 +46,19 @@ const BULK_SENDER_PATTERNS = [
   'intercom', 'drift', 'crisp', 'tawk',
 ]
 
+// Only include dedicated email marketing / newsletter platforms — NOT general enterprise domains
 const NEWSLETTER_SENDER_DOMAINS = [
   'mailchimp.com', 'sendgrid.net', 'hubspot.com', 'constantcontact.com',
   'campaign-archive.com', 'createsend.com', 'mailgun.org',
-  'email.mg.', 'mail.', 'em.', 'e.', 'news.',
-  'microsoft.com', 'linkedin.com', 'quora.com', 'facebook.com',
-  'mercury.com', 'stripe.com', 'paypal.com', 'square.com',
-  'zoom.us', 'calendly.com', 'eventbrite.com', 'meetup.com',
-  'substack.com', 'medium.com', 'ghost.io',
-  'google.com', 'apple.com', 'amazon.com',
-  'notion.so', 'slack.com', 'atlassian.com', 'jira.com',
-  'github.com', 'gitlab.com', 'bitbucket.org',
-  'canva.com', 'figma.com', 'grammarly.com',
-  'juniperresearch.com', 'nice.com', 'abundantiot.com',
-  'lineleader.com', 'textus.com', 'ivoipe.com',
+  'substack.com', 'ghost.io',
+]
+
+// Noreply-prefixed addresses from any domain are likely automated
+const NOREPLY_PREFIXES = [
+  'noreply@', 'no-reply@', 'donotreply@', 'do-not-reply@',
+  'notifications@', 'notification@', 'alerts@', 'alert@',
+  'updates@', 'update@', 'news@', 'newsletter@', 'digest@',
+  'mailer@', 'mailer-daemon@', 'postmaster@',
 ]
 
 interface SpamCheckResult {
@@ -86,29 +85,37 @@ function detectSpam(
     return { isSpam: true, reason: 'spam' }
   }
 
-  // 3. Check newsletter sender domains
+  // 3. Check newsletter sender domains (only dedicated email marketing platforms)
   if (NEWSLETTER_SENDER_DOMAINS.some(d => emailLower.includes(d))) {
     return { isSpam: true, reason: 'newsletter' }
   }
 
-  // 4. Check bulk sender platforms
+  // 4. Check noreply/automated sender prefixes
+  if (NOREPLY_PREFIXES.some(p => emailLower.startsWith(p))) {
+    return { isSpam: true, reason: 'automated_notification' }
+  }
+
+  // 5. Check bulk sender platforms
   if (BULK_SENDER_PATTERNS.some(p => emailLower.includes(p))) {
     return { isSpam: true, reason: 'marketing' }
   }
 
-  // 5. Check newsletter subject keywords
+  // 6. Check newsletter subject keywords
   if (NEWSLETTER_SUBJECT_KEYWORDS.some(kw => subjectLower.includes(kw))) {
     return { isSpam: true, reason: 'newsletter' }
   }
 
-  // 6. Check body for unsubscribe links (strong newsletter indicator)
-  if (bodyLower.includes('unsubscribe') || bodyLower.includes('email preferences') || bodyLower.includes('opt out') || bodyLower.includes('manage your subscriptions')) {
+  // 7. Check body: require multiple spam signals (not just "unsubscribe" alone)
+  const spamBodySignals = [
+    bodyLower.includes('unsubscribe'),
+    bodyLower.includes('email preferences'),
+    bodyLower.includes('opt out'),
+    bodyLower.includes('manage your subscriptions'),
+    bodyLower.includes('view in browser'),
+    bodyLower.includes('view this email'),
+  ].filter(Boolean).length
+  if (spamBodySignals >= 2) {
     return { isSpam: true, reason: 'newsletter' }
-  }
-
-  // 7. Check for empty/very short messages
-  if (messageText.trim().length < 10) {
-    return { isSpam: true, reason: 'spam' }
   }
 
   return { isSpam: false, reason: null }
@@ -180,13 +187,18 @@ export async function POST(request: Request) {
       )
     }
 
-    // Dedup check: skip if this thread_id already exists for this account
-    if (thread_id) {
+    // Dedup check: skip if exact same message text was received recently (within 5 minutes) for this account
+    // Note: thread_id is NOT used for dedup because multiple messages share the same thread
+    if (plainTextBody && plainTextBody.trim().length > 0) {
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
       const { data: existingMsg } = await supabase
         .from('messages')
         .select('id')
         .eq('account_id', account_id)
-        .eq('email_thread_id', thread_id)
+        .eq('channel', 'email')
+        .eq('direction', 'inbound')
+        .like('message_text', plainTextBody.substring(0, 100).replace(/%/g, '\\%').replace(/_/g, '\\_') + '%')
+        .gte('timestamp', fiveMinAgo)
         .limit(1)
         .maybeSingle()
 

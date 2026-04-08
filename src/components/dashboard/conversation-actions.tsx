@@ -599,7 +599,6 @@ export function ConversationActions({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-webhook-secret': 'my-webhook-secret-123',
           },
           body: JSON.stringify({
             to: adminUser.email,

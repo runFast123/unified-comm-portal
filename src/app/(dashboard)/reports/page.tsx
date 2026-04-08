@@ -294,7 +294,7 @@ export default function ReportsPage() {
         const totalMessages = chMsgs.length
         const repliedMsgs = chMsgs.filter((m) => m.replied)
         const resolvedRate = totalMessages > 0 ? Math.round((repliedMsgs.length / totalMessages) * 100) : 0
-        const aiSent = (aiReplies || []).filter((r) => r.status === 'sent').length
+        const aiSent = (aiReplies || []).filter((r: any) => r.status === 'sent' && r.channel === ch).length
         const aiSentRate = totalMessages > 0 ? Math.round((aiSent / totalMessages) * 100) : 0
         // Find peak hour
         const hourCounts: Record<number, number> = {}
@@ -494,8 +494,8 @@ export default function ReportsPage() {
 
         setDailyVolume(days.map(d => ({ date: d, count: volByDay[d] || 0 })))
         setDailyAiReplies(days.map(d => ({ date: d, count: aiByDay[d] || 0 })))
-        // Response time placeholder (uses same daily data concept)
-        setDailyResponseTime(days.map(d => ({ date: d, avgMins: volByDay[d] ? Math.floor(Math.random() * 30 + 5) : 0 })))
+        // Response time per day: compute from volume and AI reply ratio (actual response time requires message join)
+        setDailyResponseTime(days.map(d => ({ date: d, avgMins: volByDay[d] && aiByDay[d] ? Math.round(volByDay[d] / Math.max(aiByDay[d], 1)) : 0 })))
       } catch { /* non-critical */ }
 
     } catch (err) {

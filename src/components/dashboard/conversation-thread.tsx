@@ -297,7 +297,7 @@ function AIBadge() {
 
 function EmailMessage({ message, isOutbound }: { message: Message; isOutbound: boolean }) {
   const { name, email } = parseSender(message.sender_name)
-  const initials = name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  const initials = name.split(' ').filter(Boolean).map(w => w[0]).join('').substring(0, 2).toUpperCase() || 'U'
 
   return (
     <div className={cn('max-w-[90%]', isOutbound ? 'ml-auto' : 'mr-auto')}>

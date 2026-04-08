@@ -76,7 +76,7 @@ export async function findOrCreateConversation(
 ): Promise<string> {
   let query = supabase
     .from('conversations')
-    .select('id')
+    .select('id, status')
     .eq('account_id', params.account_id)
     .eq('channel', params.channel)
     .in('status', ['active', 'in_progress', 'escalated', 'waiting_on_customer', 'resolved'])
@@ -100,13 +100,7 @@ export async function findOrCreateConversation(
     const updateFields: Record<string, unknown> = { last_message_at: new Date().toISOString() }
     // Auto-reactivate resolved or waiting conversations on new inbound
     const reactivateStatuses = ['resolved', 'waiting_on_customer']
-    // Query current status to check if reactivation needed
-    const { data: currentConv } = await supabase
-      .from('conversations')
-      .select('status')
-      .eq('id', existing.id)
-      .maybeSingle()
-    if (currentConv && reactivateStatuses.includes(currentConv.status)) {
+    if (existing.status && reactivateStatuses.includes(existing.status)) {
       updateFields.status = 'active'
     }
     await supabase
@@ -124,6 +118,7 @@ export async function findOrCreateConversation(
       teams_chat_id: params.teams_chat_id || null,
       participant_name: params.participant_name || null,
       participant_email: params.participant_email || null,
+      participant_phone: params.participant_phone || null,
       status: 'active',
       priority: 'medium',
       tags: [],

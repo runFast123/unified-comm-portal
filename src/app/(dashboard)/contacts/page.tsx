@@ -28,8 +28,6 @@ import { timeAgo, cn } from '@/lib/utils'
 import { useUser } from '@/context/user-context'
 import type { ConversationStatus } from '@/types/database'
 
-const supabase = createClient()
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -137,6 +135,7 @@ function getInitials(name: string): string {
 // ---------------------------------------------------------------------------
 
 export default function ContactsPage() {
+  const supabase = createClient()
   const { isAdmin, account_id: userAccountId } = useUser()
 
   const [contacts, setContacts] = useState<ContactRecord[]>([])
