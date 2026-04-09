@@ -414,99 +414,100 @@ export default function AccountsPage() {
             </p>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.size === filtered.length && filtered.length > 0}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                  />
-                </TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Channel</TableHead>
-                <TableHead>Account Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Monitor (Phase 1)</TableHead>
-                <TableHead>AI Reply (Phase 2)</TableHead>
-                <TableHead>Phase Status</TableHead>
-                <TableHead>Last Activity</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((account, idx) => {
-                const baseName = account.name.replace(/\s+Teams$/i, '').trim()
-                const isTeamsRow = account.channel_type === 'teams' && account.name !== baseName
-                const prevBaseName = idx > 0 ? filtered[idx - 1].name.replace(/\s+Teams$/i, '').trim() : ''
-                const isFirstInGroup = baseName !== prevBaseName
-                return (
-                <TableRow
-                  key={account.id}
-                  className={`cursor-pointer ${isTeamsRow ? 'bg-gray-50/50' : ''} ${isFirstInGroup && idx > 0 ? 'border-t-2 border-gray-200' : ''}`}
-                  onClick={() => setDetailAccount(account)}
-                >
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(account.id)}
-                      onChange={() => toggleSelect(account.id)}
-                      className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-block h-2.5 w-2.5 rounded-full ${getStatusDot(account)}`}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <ChannelIcon channel={account.channel_type} size={16} />
-                      <span className="text-xs text-gray-500">
-                        {getChannelLabel(account.channel_type)}
-                      </span>
+          <div className="space-y-3">
+            {(() => {
+              // Group accounts by base company name
+              const groups: Record<string, Account[]> = {}
+              filtered.forEach((a) => {
+                const baseName = a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
+                if (!groups[baseName]) groups[baseName] = []
+                groups[baseName].push(a)
+              })
+
+              return Object.entries(groups).map(([companyName, channelAccounts]) => (
+                <div key={companyName} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                  {/* Company header */}
+                  <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={channelAccounts.every(a => selectedIds.has(a.id))}
+                        onChange={() => {
+                          const allSelected = channelAccounts.every(a => selectedIds.has(a.id))
+                          setSelectedIds(prev => {
+                            const next = new Set(prev)
+                            channelAccounts.forEach(a => allSelected ? next.delete(a.id) : next.add(a.id))
+                            return next
+                          })
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                      />
+                      <span className="text-sm font-bold text-gray-900">{companyName}</span>
+                      <div className="flex items-center gap-1.5">
+                        {channelAccounts.map(a => (
+                          <span key={a.id} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                            <ChannelIcon channel={a.channel_type} size={12} />
+                            {getChannelLabel(a.channel_type)}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-medium text-gray-900">{account.name}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-gray-500 truncate max-w-[180px] block" title={account.gmail_address || ''}>
-                      {account.gmail_address || <span className="text-gray-300 italic">Not set</span>}
+                    <span className="text-xs text-gray-400">
+                      {timeAgo(channelAccounts.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]?.updated_at)}
                     </span>
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Toggle
-                      checked={account.phase1_enabled}
-                      onChange={(val) => togglePhase1(account.id, val)}
-                    />
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Toggle
-                      checked={account.phase2_enabled}
-                      onChange={(val) => togglePhase2(account.id, val)}
-                      disabled={!account.phase1_enabled}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <PhaseIndicator
-                      phase1_enabled={account.phase1_enabled}
-                      phase2_enabled={account.phase2_enabled}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm text-gray-500">{timeAgo(account.updated_at)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <ChevronRight className="h-4 w-4 text-gray-400" />
-                  </TableCell>
-                </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+                  </div>
+
+                  {/* Channel rows */}
+                  <div className="divide-y divide-gray-100">
+                    {channelAccounts.map((account) => (
+                      <div
+                        key={account.id}
+                        className="flex items-center gap-4 px-5 py-3 hover:bg-teal-50/30 cursor-pointer transition-colors"
+                        onClick={() => setDetailAccount(account)}
+                      >
+                        <div className="flex items-center gap-2 w-28 shrink-0">
+                          <span className={`h-2 w-2 rounded-full shrink-0 ${getStatusDot(account)}`} />
+                          <ChannelIcon channel={account.channel_type} size={16} />
+                          <span className="text-xs font-medium text-gray-700">{getChannelLabel(account.channel_type)}</span>
+                        </div>
+
+                        <div className="w-44 min-w-0 shrink-0">
+                          <span className="text-xs text-gray-500 truncate block" title={account.gmail_address || ''}>
+                            {account.gmail_address || <span className="text-gray-300 italic">No email</span>}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-6 flex-1" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-400 w-16">Monitor:</span>
+                            <Toggle
+                              checked={account.phase1_enabled}
+                              onChange={(val) => togglePhase1(account.id, val)}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-400 w-16">AI Reply:</span>
+                            <Toggle
+                              checked={account.phase2_enabled}
+                              onChange={(val) => togglePhase2(account.id, val)}
+                              disabled={!account.phase1_enabled}
+                            />
+                          </div>
+                        </div>
+
+                        <PhaseIndicator
+                          phase1_enabled={account.phase1_enabled}
+                          phase2_enabled={account.phase2_enabled}
+                        />
+
+                        <ChevronRight className="h-4 w-4 text-gray-300 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            })()}
+          </div>
         )}
       </Card>
 
