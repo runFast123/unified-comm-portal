@@ -76,7 +76,7 @@ function derivePriority(urgency: string | null | undefined): Priority {
 }
 
 export default function InboxPage() {
-  const { isAdmin, account_id: userAccountId } = useUser()
+  const { isAdmin, account_id: userAccountId, companyAccountIds } = useUser()
   const { toast } = useToast()
   const searchParams = useSearchParams()
   const [filters, setFilters] = useState<InboxFilters>(() => {
@@ -225,8 +225,8 @@ export default function InboxPage() {
       }
 
       // Non-admins: only see messages for their company
-      if (!isAdmin && userAccountId) {
-        messagesQuery = messagesQuery.eq('account_id', userAccountId)
+      if (!isAdmin && companyAccountIds.length > 0) {
+        messagesQuery = messagesQuery.in('account_id', companyAccountIds)
       }
 
       // Also fetch newsletter + spam counts for the badges
@@ -236,8 +236,8 @@ export default function InboxPage() {
         .eq('direction', 'inbound')
         .eq('is_spam', true)
         .in('spam_reason', ['newsletter', 'marketing', 'automated_notification', 'ai_classified_newsletter'])
-      if (!isAdmin && userAccountId) {
-        newsletterCountQuery = newsletterCountQuery.eq('account_id', userAccountId)
+      if (!isAdmin && companyAccountIds.length > 0) {
+        newsletterCountQuery = newsletterCountQuery.in('account_id', companyAccountIds)
       }
 
       let spamCountQuery = supabase
@@ -246,8 +246,8 @@ export default function InboxPage() {
         .eq('direction', 'inbound')
         .eq('is_spam', true)
         .not('spam_reason', 'in', '(newsletter,marketing,automated_notification,ai_classified_newsletter)')
-      if (!isAdmin && userAccountId) {
-        spamCountQuery = spamCountQuery.eq('account_id', userAccountId)
+      if (!isAdmin && companyAccountIds.length > 0) {
+        spamCountQuery = spamCountQuery.in('account_id', companyAccountIds)
       }
 
       const [messagesResult, newsletterCountResult, spamCountResult] = await Promise.all([
@@ -344,7 +344,7 @@ export default function InboxPage() {
     } finally {
       setLoading(false)
     }
-  }, [isAdmin, userAccountId, inboxView, dashboardFilter, INBOX_PAGE_SIZE])
+  }, [isAdmin, companyAccountIds, inboxView, dashboardFilter, INBOX_PAGE_SIZE])
 
   useEffect(() => {
     fetchInboxItems()
@@ -379,7 +379,7 @@ export default function InboxPage() {
       else if (inboxView === 'newsletter') moreQuery = moreQuery.eq('is_spam', true).in('spam_reason', ['newsletter', 'marketing', 'automated_notification', 'ai_classified_newsletter'])
       else moreQuery = moreQuery.eq('is_spam', true).not('spam_reason', 'in', '(newsletter,marketing,automated_notification,ai_classified_newsletter)')
 
-      if (!isAdmin && userAccountId) moreQuery = moreQuery.eq('account_id', userAccountId)
+      if (!isAdmin && companyAccountIds.length > 0) moreQuery = moreQuery.in('account_id', companyAccountIds)
 
       const { data: moreMessages } = await moreQuery
 
@@ -426,7 +426,7 @@ export default function InboxPage() {
     } finally {
       setLoadingMore(false)
     }
-  }, [items, loadingMore, hasMore, isAdmin, userAccountId, inboxView, INBOX_PAGE_SIZE])
+  }, [items, loadingMore, hasMore, isAdmin, companyAccountIds, inboxView, INBOX_PAGE_SIZE])
 
   // Real-time: auto-refresh inbox when new messages arrive (debounced 3s)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)

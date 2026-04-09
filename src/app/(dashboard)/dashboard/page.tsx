@@ -151,7 +151,7 @@ function getChannelColoredIcon(channel: ChannelType) {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { isAdmin, account_id: userAccountId } = useUser()
+  const { isAdmin, account_id: userAccountId, companyAccountIds } = useUser()
   const { visible: widgetVisibility, setVisible: setWidgetVisibility, isVisible: isWidgetVisible } = useWidgetVisibility()
   const [channelFilter, setChannelFilter] = useState<ChannelFilterValue>('all')
   const [dateRange, setDateRange] = useState<DateRange>('today')
@@ -389,15 +389,15 @@ export default function DashboardPage() {
         : null
 
       try {
-        // Build scoped queries - non-admins only see their company's data
-        const accountIdFilter = !isAdmin && userAccountId ? userAccountId : null
+        // Build scoped queries - non-admins see all sibling accounts for their company
+        const accountIdFilter = !isAdmin && companyAccountIds.length > 0 ? companyAccountIds : null
 
         let accountsQuery = supabase
           .from('accounts')
           .select('id, name, channel_type, gmail_address, phase1_enabled, phase2_enabled')
           .eq('is_active', true)
           .order('name')
-        if (accountIdFilter) accountsQuery = accountsQuery.eq('id', accountIdFilter)
+        if (accountIdFilter) accountsQuery = accountsQuery.in('id', accountIdFilter)
 
         let channelMsgQuery = supabase
           .from('messages')
@@ -406,7 +406,7 @@ export default function DashboardPage() {
           .eq('direction', 'inbound')
           .limit(10000)
         if (customToISO) channelMsgQuery = channelMsgQuery.lte('received_at', customToISO)
-        if (accountIdFilter) channelMsgQuery = channelMsgQuery.eq('account_id', accountIdFilter)
+        if (accountIdFilter) channelMsgQuery = channelMsgQuery.in('account_id', accountIdFilter)
 
         let channelPendingQuery = supabase
           .from('messages')
@@ -417,7 +417,7 @@ export default function DashboardPage() {
           .eq('replied', false)
           .limit(10000)
         if (customToISO) channelPendingQuery = channelPendingQuery.lte('received_at', customToISO)
-        if (accountIdFilter) channelPendingQuery = channelPendingQuery.eq('account_id', accountIdFilter)
+        if (accountIdFilter) channelPendingQuery = channelPendingQuery.in('account_id', accountIdFilter)
 
         let aiSentQuery = supabase
           .from('ai_replies')
@@ -426,7 +426,7 @@ export default function DashboardPage() {
           .eq('status', 'sent')
           .limit(10000)
         if (customToISO) aiSentQuery = aiSentQuery.lte('sent_at', customToISO)
-        if (accountIdFilter) aiSentQuery = aiSentQuery.eq('account_id', accountIdFilter)
+        if (accountIdFilter) aiSentQuery = aiSentQuery.in('account_id', accountIdFilter)
 
         // Combine category + sentiment into a single query (same table, same date filter)
         let classificationQuery = supabase
@@ -444,7 +444,7 @@ export default function DashboardPage() {
           .eq('reply_required', true)
           .eq('replied', false)
           .limit(10000)
-        if (accountIdFilter) pendingByAccountQuery = pendingByAccountQuery.eq('account_id', accountIdFilter)
+        if (accountIdFilter) pendingByAccountQuery = pendingByAccountQuery.in('account_id', accountIdFilter)
 
         // Last message time per account
         let lastMsgQuery = supabase
@@ -453,7 +453,7 @@ export default function DashboardPage() {
           .eq('direction', 'inbound')
           .order('received_at', { ascending: false })
           .limit(10000)
-        if (accountIdFilter) lastMsgQuery = lastMsgQuery.eq('account_id', accountIdFilter)
+        if (accountIdFilter) lastMsgQuery = lastMsgQuery.in('account_id', accountIdFilter)
 
         // SLA: inbound messages in range
         let slaInboundQuery = supabase
@@ -463,7 +463,7 @@ export default function DashboardPage() {
           .gte('received_at', rangeISO)
           .limit(10000)
         if (customToISO) slaInboundQuery = slaInboundQuery.lte('received_at', customToISO)
-        if (accountIdFilter) slaInboundQuery = slaInboundQuery.eq('account_id', accountIdFilter)
+        if (accountIdFilter) slaInboundQuery = slaInboundQuery.in('account_id', accountIdFilter)
 
         // SLA: outbound replies in range
         let slaOutboundQuery = supabase
@@ -474,7 +474,7 @@ export default function DashboardPage() {
           .limit(10000)
           .order('timestamp', { ascending: true })
         if (customToISO) slaOutboundQuery = slaOutboundQuery.lte('timestamp', customToISO)
-        if (accountIdFilter) slaOutboundQuery = slaOutboundQuery.eq('account_id', accountIdFilter)
+        if (accountIdFilter) slaOutboundQuery = slaOutboundQuery.in('account_id', accountIdFilter)
 
         // Fetch ALL data in a single Promise.all (no sequential awaits)
         const [
@@ -663,7 +663,7 @@ export default function DashboardPage() {
             .eq('is_spam', true)
             .gte('received_at', rangeISO)
           if (customToISO) spamQuery = spamQuery.lte('received_at', customToISO)
-          if (accountIdFilter) spamQuery = spamQuery.eq('account_id', accountIdFilter)
+          if (accountIdFilter) spamQuery = spamQuery.in('account_id', accountIdFilter)
           const { count: spamTotal } = await spamQuery
           setSpamFilteredToday(spamTotal ?? 0)
         } catch (spamErr) {
@@ -779,7 +779,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData()
-  }, [dateRange, customFrom, customTo, isAdmin, userAccountId])
+  }, [dateRange, customFrom, customTo, isAdmin, companyAccountIds])
 
   const maxCategoryCount = categories[0]?.count ?? 1
 

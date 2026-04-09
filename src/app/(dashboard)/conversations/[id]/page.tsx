@@ -83,9 +83,19 @@ export default async function ConversationPage({
     notFound()
   }
 
-  // Non-admin users can only access conversations for their own company
-  if (!userIsAdmin && userAccountId && conversation.account_id !== userAccountId) {
-    notFound()
+  // Non-admin users can only access conversations for their own company (including sibling channel accounts)
+  if (!userIsAdmin && userAccountId) {
+    const { data: myAccount } = await supabase.from('accounts').select('name').eq('id', userAccountId).maybeSingle()
+    const baseName = (myAccount?.name || '').replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
+    const { data: companyAccounts } = await supabase.from('accounts').select('id, name').eq('is_active', true)
+    const allowedIds = new Set(
+      (companyAccounts || [])
+        .filter((a: any) => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
+        .map((a: any) => a.id)
+    )
+    if (!allowedIds.has(conversation.account_id)) {
+      notFound()
+    }
   }
 
   // Fetch all messages in this conversation
