@@ -68,7 +68,7 @@ import { useUser } from '@/context/user-context'
 interface AccountOption { id: string; name: string }
 
 export default function SheetsPage() {
-  const { isAdmin, account_id: userAccountId } = useUser()
+  const { isAdmin, companyAccountIds } = useUser()
   const supabase = createClient()
   const [sheets, setSheets] = useState<GoogleSheetsSync[]>([])
   const [accounts, setAccounts] = useState<AccountOption[]>([])
@@ -92,12 +92,12 @@ export default function SheetsPage() {
         .select('id, name')
         .eq('is_active', true)
         .order('name')
-      if (!isAdmin && userAccountId) query = query.eq('id', userAccountId)
+      if (!isAdmin && companyAccountIds.length > 0) query = query.in('id', companyAccountIds)
       const { data } = await query
       if (data) setAccounts(data)
     }
     fetchAccounts()
-  }, [isAdmin, userAccountId])
+  }, [isAdmin, companyAccountIds])
 
   // Helper to get account name
   function getAccountName(accountId: string | null): string {
@@ -114,8 +114,8 @@ export default function SheetsPage() {
         .select('*')
         .order('created_at', { ascending: false })
       // Non-admins: only see sheets for their company or shared
-      if (!isAdmin && userAccountId) {
-        query = query.or(`account_id.eq.${userAccountId},account_id.is.null`)
+      if (!isAdmin && companyAccountIds.length > 0) {
+        query = query.or(companyAccountIds.map(id => `account_id.eq.${id}`).concat('account_id.is.null').join(','))
       }
       const { data, error } = await query
 
@@ -132,7 +132,7 @@ export default function SheetsPage() {
       setStatusMessage('Error loading sheet configurations.')
     }
     setLoading(false)
-  }, [isAdmin, userAccountId])
+  }, [isAdmin, companyAccountIds])
 
   useEffect(() => {
     loadSheets()
@@ -161,7 +161,7 @@ export default function SheetsPage() {
       sheet_id: sheetId,
       sheet_name: detectedName,
       sheet_url: newSheetUrl,
-      account_id: (!isAdmin && userAccountId) ? userAccountId : (newSheetAccountId || null),
+      account_id: (!isAdmin && companyAccountIds.length > 0) ? companyAccountIds[0] : (newSheetAccountId || null),
       sync_status: 'paused' as SyncStatus,
       row_count: 0,
       sync_schedule: 'Every 30 minutes',

@@ -248,14 +248,16 @@ export default function ReportsPage() {
       if (accountIdFilter) messagesQuery = messagesQuery.in('account_id', accountIdFilter)
       const { data: messages } = await messagesQuery
 
-      // 2. Fetch classifications
+      // 2. Fetch classifications (join through messages for account scoping)
       let classQuery = supabase
         .from('message_classifications')
-        .select('category, sentiment, urgency, confidence, classified_at')
+        .select(accountIdFilter ? 'category, sentiment, urgency, confidence, classified_at, messages!inner(account_id)' : 'category, sentiment, urgency, confidence, classified_at')
         .gte('classified_at', startDate)
         .limit(10000)
       if (endDate) classQuery = classQuery.lte('classified_at', endDate)
-      const { data: classifications } = await classQuery
+      if (accountIdFilter) classQuery = (classQuery as any).in('messages.account_id', accountIdFilter)
+      const { data: rawClassifications } = await classQuery
+      const classifications = (rawClassifications ?? []) as any[]
 
       // 3. Fetch AI replies with linked message received_at for response time calc
       let aiQuery = supabase
@@ -442,9 +444,10 @@ export default function ReportsPage() {
 
         let prevClassQuery = supabase
           .from('message_classifications')
-          .select('id')
+          .select(accountIdFilter ? 'id, messages!inner(account_id)' : 'id')
           .gte('classified_at', prevStart)
-          .lte('classified_at', prevEnd)
+          .lte('classified_at', prevEnd) as any
+        if (accountIdFilter) prevClassQuery = prevClassQuery.in('messages.account_id', accountIdFilter)
         const { data: prevClassifications } = await prevClassQuery
 
         let prevAiQuery = supabase

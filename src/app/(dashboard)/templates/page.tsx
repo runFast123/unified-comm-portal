@@ -67,7 +67,7 @@ function getCategoryVariant(category: string): 'info' | 'warning' | 'success' | 
 // ---------------------------------------------------------------------------
 
 export default function TemplatesPage() {
-  const { isAdmin, account_id: userAccountId } = useUser()
+  const { isAdmin, companyAccountIds } = useUser()
   const [templates, setTemplates] = useState<ReplyTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -96,8 +96,8 @@ export default function TemplatesPage() {
       .eq('is_active', true)
       .order('name')
     // Non-admins only see their own company
-    if (!isAdmin && userAccountId) {
-      query = query.eq('id', userAccountId)
+    if (!isAdmin && companyAccountIds.length > 0) {
+      query = query.in('id', companyAccountIds)
     }
     const { data } = await query
     if (data) setAccounts(data)
@@ -113,8 +113,8 @@ export default function TemplatesPage() {
       .order('updated_at', { ascending: false })
 
     // Non-admins: only see templates for their company or shared (account_id IS NULL)
-    if (!isAdmin && userAccountId) {
-      query = query.or(`account_id.eq.${userAccountId},account_id.is.null`)
+    if (!isAdmin && companyAccountIds.length > 0) {
+      query = query.or(companyAccountIds.map(id => `account_id.eq.${id}`).concat('account_id.is.null').join(','))
     }
 
     const { data, error: fetchError } = await query
@@ -231,7 +231,7 @@ export default function TemplatesPage() {
       content: '',
       category: 'General',
       shortcut: '',
-      account_id: !isAdmin && userAccountId ? userAccountId : '',
+      account_id: !isAdmin && companyAccountIds.length > 0 ? companyAccountIds[0] : '',
     })
     setEditModalOpen(true)
   }
