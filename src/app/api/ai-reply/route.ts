@@ -406,6 +406,18 @@ export async function POST(request: Request) {
     // If trust mode is on, trigger n8n to send the reply through the channel
     if (account.ai_trust_mode && aiReply) {
       try {
+        // Get conversation details for the reply (recipient, subject, teams_chat_id)
+        const { data: convForReply } = await supabase
+          .from('conversations')
+          .select('participant_email, teams_chat_id')
+          .eq('id', conversation_id)
+          .maybeSingle()
+        const { data: origMsg } = await supabase
+          .from('messages')
+          .select('email_subject')
+          .eq('id', message_id)
+          .maybeSingle()
+
         const origin = new URL(request.url).origin
         await fetch(`${origin}/api/n8n`, {
           method: 'POST',
@@ -417,10 +429,14 @@ export async function POST(request: Request) {
             action: `send_${channelKey}_reply`,
             account_id,
             data: {
+              to: convForReply?.participant_email || null,
+              subject: origMsg?.email_subject ? `Re: ${origMsg.email_subject}` : 'Re: Your communication',
+              message: replyText,
               reply_id: aiReply.id,
               reply_text: replyText,
               conversation_id,
               message_id,
+              teams_chat_id: convForReply?.teams_chat_id || null,
             },
           }),
         })

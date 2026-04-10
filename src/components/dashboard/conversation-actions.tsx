@@ -328,7 +328,7 @@ export function ConversationActions({
           data: {
             to: participantEmail,
             subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
-            body: aiDraftText,
+            message: aiDraftText,
             conversation_id: conversationId,
             reply_text: aiDraftText,
             teams_chat_id: teamsChatId || undefined,
@@ -413,7 +413,7 @@ export function ConversationActions({
           data: {
             to: participantEmail,
             subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
-            body: editText,
+            message: editText,
             conversation_id: conversationId,
             reply_text: editText,
             teams_chat_id: teamsChatId || undefined,
@@ -497,7 +497,7 @@ export function ConversationActions({
           data: {
             to: participantEmail,
             subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
-            body: manualText,
+            message: manualText,
             conversation_id: conversationId,
             reply_text: manualText,
             teams_chat_id: teamsChatId || undefined,
