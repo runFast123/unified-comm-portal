@@ -38,26 +38,32 @@ export default async function DashboardLayout({
   }
 
   // Fetch sibling account IDs (same company, different channels) for non-admin users
+  // Uses direct REST API with service role key to bypass ALL RLS policies
   let companyAccountIds: string[] = user.account_id ? [user.account_id] : []
   if (user.role !== 'admin' && user.account_id) {
-    const { data: myAccount, error: myAccErr } = await supabase
-      .from('accounts')
-      .select('name')
-      .eq('id', user.account_id)
-      .maybeSingle()
-
-    if (myAccount?.name) {
-      const baseName = myAccount.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-      const { data: allAccounts } = await supabase
-        .from('accounts')
-        .select('id, name')
-        .eq('is_active', true)
-      if (allAccounts) {
-        companyAccountIds = allAccounts
-          .filter(a => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
-          .map(a => a.id)
+    try {
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      if (serviceKey && supabaseUrl) {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/accounts?select=id,name&is_active=eq.true`,
+          {
+            headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` },
+            cache: 'no-store',
+          }
+        )
+        if (res.ok) {
+          const allAccounts: { id: string; name: string }[] = await res.json()
+          const myAccount = allAccounts.find(a => a.id === user.account_id)
+          if (myAccount) {
+            const baseName = myAccount.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
+            companyAccountIds = allAccounts
+              .filter(a => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
+              .map(a => a.id)
+          }
+        }
       }
-    }
+    } catch { /* fallback to single account_id */ }
   }
 
   // Fetch pending reply count (scoped for non-admins)
