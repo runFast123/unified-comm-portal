@@ -176,6 +176,16 @@ export default function InboxPage() {
     try {
       const supabase = createClient()
 
+      // Ensure we have full sibling account IDs for non-admin users
+      let resolvedAccountIds = companyAccountIds
+      if (!isAdmin && resolvedAccountIds.length <= 1) {
+        try {
+          const res = await fetch('/api/user-accounts')
+          const data = await res.json()
+          if (data.accountIds?.length > 0) resolvedAccountIds = data.accountIds
+        } catch { /* use context value */ }
+      }
+
       // Fetch inbound messages with joined data
       let messagesQuery = supabase
         .from('messages')
@@ -230,8 +240,8 @@ export default function InboxPage() {
       }
 
       // Non-admins: only see messages for their company
-      if (!isAdmin && companyAccountIds.length > 0) {
-        messagesQuery = messagesQuery.in('account_id', companyAccountIds)
+      if (!isAdmin && resolvedAccountIds.length > 0) {
+        messagesQuery = messagesQuery.in('account_id', resolvedAccountIds)
       }
 
       // Also fetch newsletter + spam counts for the badges
@@ -241,8 +251,8 @@ export default function InboxPage() {
         .eq('direction', 'inbound')
         .eq('is_spam', true)
         .in('spam_reason', ['newsletter', 'marketing', 'automated_notification', 'ai_classified_newsletter'])
-      if (!isAdmin && companyAccountIds.length > 0) {
-        newsletterCountQuery = newsletterCountQuery.in('account_id', companyAccountIds)
+      if (!isAdmin && resolvedAccountIds.length > 0) {
+        newsletterCountQuery = newsletterCountQuery.in('account_id', resolvedAccountIds)
       }
 
       let spamCountQuery = supabase
@@ -251,8 +261,8 @@ export default function InboxPage() {
         .eq('direction', 'inbound')
         .eq('is_spam', true)
         .not('spam_reason', 'in', '(newsletter,marketing,automated_notification,ai_classified_newsletter)')
-      if (!isAdmin && companyAccountIds.length > 0) {
-        spamCountQuery = spamCountQuery.in('account_id', companyAccountIds)
+      if (!isAdmin && resolvedAccountIds.length > 0) {
+        spamCountQuery = spamCountQuery.in('account_id', resolvedAccountIds)
       }
 
       const [messagesResult, newsletterCountResult, spamCountResult] = await Promise.all([

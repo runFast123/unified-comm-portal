@@ -38,15 +38,27 @@ export default function AccountsPage() {
 
   useEffect(() => {
     async function fetchAccounts() {
-      console.log('[Accounts] Fetching with companyAccountIds:', companyAccountIds.length, companyAccountIds)
       const supabase = createClient()
+
+      // For non-admin users: fetch sibling IDs directly from the API
+      // to ensure we always have the full list (context may still be loading)
+      let accountFilter = companyAccountIds
+      if (!isAdmin && accountFilter.length <= 1) {
+        try {
+          const res = await fetch('/api/user-accounts')
+          const data = await res.json()
+          if (data.accountIds && data.accountIds.length > 0) {
+            accountFilter = data.accountIds
+          }
+        } catch { /* use context value */ }
+      }
 
       let accountsQuery = supabase
         .from('accounts')
         .select('*')
         .order('name')
-      if (!isAdmin && companyAccountIds.length > 0) {
-        accountsQuery = accountsQuery.in('id', companyAccountIds)
+      if (!isAdmin && accountFilter.length > 0) {
+        accountsQuery = accountsQuery.in('id', accountFilter)
       }
       const { data: accountRows, error } = await accountsQuery
 
