@@ -46,15 +46,14 @@ export default async function DashboardLayout({
         .maybeSingle()
       if (myAccount?.name) {
         const baseName = myAccount.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-        const { data: allAccounts, error: accErr } = await adminSupabase
+        const { data: allAccounts } = await adminSupabase
           .from('accounts')
           .select('id, name')
           .eq('is_active', true)
-        console.log('[Sibling Lookup]', { userAccountId: user.account_id, myName: myAccount.name, baseName, totalAccounts: allAccounts?.length, error: accErr?.message })
         if (allAccounts) {
-          const matches = allAccounts.filter(a => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
-          console.log('[Sibling Matches]', matches.map(a => ({ id: a.id, name: a.name })))
-          companyAccountIds = matches.map(a => a.id)
+          companyAccountIds = allAccounts
+            .filter(a => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
+            .map(a => a.id)
         }
       }
     } catch (err) {
