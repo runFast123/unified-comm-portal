@@ -35,24 +35,30 @@ import Link from 'next/link'
 import { useToast } from '@/components/ui/toast'
 
 function GapCount() {
+  const { isAdmin, companyAccountIds } = useUser()
   const [count, setCount] = useState<number | null>(null)
   useEffect(() => {
-    async function fetch() {
+    async function fetchGapCount() {
       const supabase = createClient()
-      const { count: c } = await supabase
+      let query = supabase
         .from('message_classifications')
-        .select('message_id', { count: 'exact', head: true })
+        .select('message_id, messages!inner(account_id)' as any, { count: 'exact', head: true })
         .lt('confidence', 0.6)
+      if (!isAdmin && companyAccountIds.length > 0) {
+        query = (query as any).in('messages.account_id', companyAccountIds)
+      }
+      const { count: c } = await query
       setCount(c || 0)
     }
-    fetch()
-  }, [])
+    fetchGapCount()
+  }, [isAdmin, companyAccountIds])
   return <p className="text-2xl font-bold text-gray-900">{count ?? '...'}</p>
 }
 
 // ─── Gap Analysis Component ──────────────────────────────────────────────────
 
 function GapAnalysis() {
+  const { isAdmin, companyAccountIds } = useUser()
   const [gaps, setGaps] = useState<{
     id: string
     message_text: string
@@ -71,7 +77,7 @@ function GapAnalysis() {
       const supabase = createClient()
 
       // Find messages with LOW AI classification confidence (< 0.6) — these are KB gaps
-      const { data } = await supabase
+      let gapQuery = supabase
         .from('message_classifications')
         .select(`
           message_id,
@@ -85,12 +91,17 @@ function GapAnalysis() {
             conversation_id,
             timestamp,
             is_spam,
+            account_id,
             accounts!messages_account_id_fkey ( name )
           )
-        `)
+        ` as any)
         .lt('confidence', 0.6)
         .order('classified_at', { ascending: false })
         .limit(20)
+      if (!isAdmin && companyAccountIds.length > 0) {
+        gapQuery = (gapQuery as any).in('messages.account_id', companyAccountIds)
+      }
+      const { data } = await gapQuery
 
       const mapped = (data || [])
         .filter((d: any) => !d.messages?.is_spam)
@@ -109,7 +120,7 @@ function GapAnalysis() {
       setLoading(false)
     }
     fetchGaps()
-  }, [])
+  }, [isAdmin, companyAccountIds])
 
   if (loading) {
     return (

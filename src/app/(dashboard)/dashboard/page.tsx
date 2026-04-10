@@ -1453,6 +1453,7 @@ export default function DashboardPage() {
             if (channelFilter !== 'all' && s.channel_type !== channelFilter) return false
             return true
           })}
+          companyAccountIds={!isAdmin && companyAccountIds.length > 0 ? companyAccountIds : undefined}
         />
       </Card>}
     </div>

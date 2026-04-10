@@ -28,9 +28,10 @@ type SortKey = 'name' | 'totalMessages' | 'pendingReplies' | 'aiDraftsReady' | '
 
 interface Props {
   stats: CompanyPerformance[]
+  companyAccountIds?: string[]
 }
 
-export function CompanyStatsTable({ stats }: Props) {
+export function CompanyStatsTable({ stats, companyAccountIds }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('totalMessages')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [specificDate, setSpecificDate] = useState('')
@@ -46,12 +47,16 @@ export function CompanyStatsTable({ stats }: Props) {
     const startOfDay = new Date(date + 'T00:00:00').toISOString()
     const endOfDay = new Date(date + 'T23:59:59.999').toISOString()
 
-    // Get all accounts
-    const { data: accounts } = await supabase
+    // Get accounts (scoped for non-admin users)
+    let accQuery = supabase
       .from('accounts')
       .select('id, name, channel_type, gmail_address')
       .eq('is_active', true)
       .order('name')
+    if (companyAccountIds && companyAccountIds.length > 0) {
+      accQuery = accQuery.in('id', companyAccountIds)
+    }
+    const { data: accounts } = await accQuery
 
     if (!accounts) { setDateLoading(false); return }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
 import { verifyAccountAccess } from '@/lib/api-helpers'
 
 /**
@@ -36,8 +36,22 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Access denied to this account' }, { status: 403 })
       }
     } else if (!isAdmin && profile?.account_id) {
-      // Non-admin users without an explicit account_id filter are scoped to their own account
+      // Non-admin users: scope to all sibling accounts (same company, different channels)
       accountId = profile.account_id
+    }
+
+    // For non-admin users, expand single accountId to include sibling accounts
+    let accountIds: string[] | null = accountId ? [accountId] : null
+    if (!isAdmin && accountId) {
+      try {
+        const adminSupa = await createServiceRoleClient()
+        const { data: myAcc } = await adminSupa.from('accounts').select('name').eq('id', accountId).maybeSingle()
+        if (myAcc?.name) {
+          const base = myAcc.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
+          const { data: all } = await adminSupa.from('accounts').select('id, name').eq('is_active', true)
+          if (all) accountIds = all.filter(a => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === base).map(a => a.id)
+        }
+      } catch { /* fallback to single account */ }
     }
 
     // Escape CSV values to prevent formula injection (=, +, -, @, tab, CR)
@@ -65,7 +79,7 @@ export async function GET(request: Request) {
 
       if (from) query = query.gte('received_at', from)
       if (to) query = query.lte('received_at', to)
-      if (accountId) query = query.eq('account_id', accountId)
+      if (accountIds && accountIds.length > 0) query = query.in('account_id', accountIds)
 
       const { data: messages, error } = await query
       if (error) throw error
@@ -101,7 +115,7 @@ export async function GET(request: Request) {
 
       if (from) query = query.gte('created_at', from)
       if (to) query = query.lte('created_at', to)
-      if (accountId) query = query.eq('account_id', accountId)
+      if (accountIds && accountIds.length > 0) query = query.in('account_id', accountIds)
 
       const { data: replies, error } = await query
       if (error) throw error
