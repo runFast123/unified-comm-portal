@@ -37,7 +37,7 @@ export async function GET() {
 
     // Fetch ALL active accounts using service role (bypasses RLS)
     const allAccountsRes = await fetch(
-      `${supabaseUrl}/rest/v1/accounts?select=id,name,channel_type,gmail_address,phase1_enabled,phase2_enabled,ai_auto_reply,ai_trust_mode,updated_at,make_scenario_id&is_active=eq.true&order=name`,
+      `${supabaseUrl}/rest/v1/accounts?select=*&is_active=eq.true&order=name`,
       {
         headers: {
           'apikey': serviceKey,
