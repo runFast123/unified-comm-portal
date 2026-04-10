@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { AccountDetailClient } from './account-detail-client'
 
 export default async function AccountDetailPage({
@@ -21,21 +21,20 @@ export default async function AccountDetailPage({
     .eq('id', authUser.id)
     .maybeSingle()
 
-  // Non-admin users can only view their company's accounts
-  if (profile?.role !== 'admin' && profile?.account_id) {
-    const adminSupabase = await createServiceRoleClient()
-    const { data: myAccount } = await adminSupabase.from('accounts').select('name').eq('id', profile.account_id).maybeSingle()
-    const baseName = (myAccount?.name || '').replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-    const { data: targetAccount } = await adminSupabase.from('accounts').select('name').eq('id', id).maybeSingle()
-    const targetBase = (targetAccount?.name || '').replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-    if (baseName !== targetBase) notFound()
-  }
+  // Fetch account via direct REST API (bypasses RLS)
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!serviceKey || !supabaseUrl) notFound()
 
-  const { data: account } = await supabase
-    .from('accounts')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
+  const accountRes = await fetch(
+    `${supabaseUrl}/rest/v1/accounts?id=eq.${id}&select=*&limit=1`,
+    {
+      headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` },
+      cache: 'no-store',
+    }
+  )
+  const accountArr = accountRes.ok ? await accountRes.json() : []
+  const account = accountArr[0] || null
 
   if (!account) {
     return (
@@ -46,6 +45,19 @@ export default async function AccountDetailPage({
         </Link>
       </div>
     )
+  }
+
+  // Non-admin users can only view their company's accounts
+  if (profile?.role !== 'admin' && profile?.account_id) {
+    // Get user's own account name via REST API
+    const myAccRes = await fetch(
+      `${supabaseUrl}/rest/v1/accounts?id=eq.${profile.account_id}&select=name&limit=1`,
+      { headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }, cache: 'no-store' }
+    )
+    const myAccArr = myAccRes.ok ? await myAccRes.json() : []
+    const baseName = (myAccArr[0]?.name || '').replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
+    const targetBase = (account.name || '').replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
+    if (baseName !== targetBase) notFound()
   }
 
   return <AccountDetailClient account={account} />
