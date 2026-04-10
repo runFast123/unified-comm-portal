@@ -38,25 +38,46 @@ export default async function DashboardLayout({
   }
 
   // Fetch sibling account IDs (same company, different channels) for non-admin users
-  // RLS on accounts table is USING(true) so session client can read all accounts
   let companyAccountIds: string[] = user.account_id ? [user.account_id] : []
   if (user.role !== 'admin' && user.account_id) {
-    const { data: myAccount } = await supabase
+    const { data: myAccount, error: myAccErr } = await supabase
       .from('accounts')
       .select('name')
       .eq('id', user.account_id)
       .maybeSingle()
+
+    if (myAccErr) {
+      console.error('[LAYOUT] Failed to fetch own account:', myAccErr.message)
+    }
+
     if (myAccount?.name) {
       const baseName = myAccount.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-      const { data: allAccounts } = await supabase
+      const { data: allAccounts, error: allAccErr } = await supabase
         .from('accounts')
         .select('id, name')
         .eq('is_active', true)
+
+      if (allAccErr) {
+        console.error('[LAYOUT] Failed to fetch all accounts:', allAccErr.message)
+      }
+
+      console.log('[LAYOUT] Sibling lookup:', {
+        email: user.email,
+        myName: myAccount.name,
+        baseName,
+        allAccountsCount: allAccounts?.length ?? 0,
+        allAccountsError: allAccErr?.message ?? null,
+      })
+
       if (allAccounts) {
         companyAccountIds = allAccounts
           .filter(a => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
           .map(a => a.id)
       }
+
+      console.log('[LAYOUT] Final companyAccountIds:', companyAccountIds)
+    } else {
+      console.error('[LAYOUT] Own account not found for id:', user.account_id)
     }
   }
 
