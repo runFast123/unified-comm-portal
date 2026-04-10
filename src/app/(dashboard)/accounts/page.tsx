@@ -39,31 +39,35 @@ export default function AccountsPage() {
   useEffect(() => {
     async function fetchAccounts() {
       const supabase = createClient()
+      let accountRows: any[] | null = null
 
-      // For non-admin users: fetch sibling IDs directly from the API
-      // to ensure we always have the full list (context may still be loading)
-      let accountFilter = companyAccountIds
-      if (!isAdmin && accountFilter.length <= 1) {
+      if (!isAdmin) {
+        // Non-admin: fetch accounts via server API (bypasses RLS)
         try {
           const res = await fetch('/api/user-accounts')
           const data = await res.json()
-          if (data.accountIds && data.accountIds.length > 0) {
-            accountFilter = data.accountIds
+          if (data.accounts && data.accounts.length > 0) {
+            accountRows = data.accounts
           }
-        } catch { /* use context value */ }
+        } catch { /* fallback to supabase */ }
       }
 
-      let accountsQuery = supabase
-        .from('accounts')
-        .select('*')
-        .order('name')
-      if (!isAdmin && accountFilter.length > 0) {
-        accountsQuery = accountsQuery.in('id', accountFilter)
+      // Admin or fallback: use Supabase client directly
+      if (!accountRows) {
+        const { data, error } = await supabase
+          .from('accounts')
+          .select('*')
+          .order('name')
+        if (error) {
+          console.error('Error fetching accounts:', error)
+          setLoading(false)
+          return
+        }
+        accountRows = data
       }
-      const { data: accountRows, error } = await accountsQuery
 
-      if (error || !accountRows) {
-        console.error('Error fetching accounts:', error)
+      if (!accountRows) {
+        console.error('Error fetching accounts: no data')
         setLoading(false)
         return
       }

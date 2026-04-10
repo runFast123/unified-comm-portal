@@ -37,7 +37,7 @@ export async function GET() {
 
     // Fetch ALL active accounts using service role (bypasses RLS)
     const allAccountsRes = await fetch(
-      `${supabaseUrl}/rest/v1/accounts?select=id,name&is_active=eq.true&order=name`,
+      `${supabaseUrl}/rest/v1/accounts?select=id,name,channel_type,gmail_address,phase1_enabled,phase2_enabled,ai_auto_reply,ai_trust_mode,updated_at,make_scenario_id&is_active=eq.true&order=name`,
       {
         headers: {
           'apikey': serviceKey,
@@ -51,7 +51,7 @@ export async function GET() {
       return NextResponse.json({ accountIds: [profile.account_id] })
     }
 
-    const allAccounts: { id: string; name: string }[] = await allAccountsRes.json()
+    const allAccounts: Record<string, unknown>[] = await allAccountsRes.json()
 
     // Find the user's account name
     const myAccount = allAccounts.find(a => a.id === profile.account_id)
@@ -60,17 +60,19 @@ export async function GET() {
     }
 
     // Find siblings by base name match
-    const baseName = myAccount.name
+    const baseName = (myAccount.name as string)
       .replace(/\s+Teams$/i, '')
       .replace(/\s+WhatsApp$/i, '')
       .trim()
 
-    const siblingIds = allAccounts
-      .filter(a => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
-      .map(a => a.id)
+    const siblingAccounts = allAccounts
+      .filter(a => (a.name as string).replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
+
+    const siblingIds = siblingAccounts.map(a => a.id as string)
 
     return NextResponse.json({
       accountIds: siblingIds.length > 0 ? siblingIds : [profile.account_id],
+      accounts: siblingAccounts,
       debug: { baseName, found: siblingIds.length, myName: myAccount.name }
     })
   } catch (err) {
