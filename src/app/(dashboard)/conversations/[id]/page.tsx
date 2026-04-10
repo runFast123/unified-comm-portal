@@ -46,14 +46,16 @@ export default async function ConversationPage({
 
   let userAccountId: string | null = null
   let userIsAdmin = false
+  let currentUserName: string | null = null
   if (authUser) {
     const { data: profile } = await supabase
       .from('users')
-      .select('role, account_id')
+      .select('role, account_id, full_name')
       .eq('id', authUser.id)
       .maybeSingle()
     userIsAdmin = profile?.role === 'admin'
     userAccountId = profile?.account_id ?? null
+    currentUserName = profile?.full_name ?? authUser.email ?? null
   }
 
   // Fetch conversation details
@@ -356,8 +358,10 @@ export default async function ConversationPage({
               aiReplyStatus={aiReply?.status || null}
               aiDraftText={aiReply?.draft_text || aiReply?.edited_text || null}
               participantEmail={conversation.participant_email}
+              participantName={participantName}
               emailSubject={emailSubject}
               teamsChatId={conversation.teams_chat_id || null}
+              conversationStatus={status}
             />
           </div>
         </div>
@@ -371,7 +375,7 @@ export default async function ConversationPage({
             sentimentHistory={sentimentHistory}
             customerHistory={customerHistory}
           />
-          <InternalNotes conversationId={id} />
+          <InternalNotes conversationId={id} authorName={currentUserName || undefined} />
         </div>
       </div>
     </div>

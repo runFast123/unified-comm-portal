@@ -298,6 +298,17 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
           )}
         </div>
 
+        {/* Conversation tags */}
+        {item.tags && item.tags.length > 0 && (
+          <div className="hidden xl:flex items-center gap-1">
+            {item.tags.slice(0, 2).map(tag => (
+              <span key={tag} className="rounded-full bg-indigo-50 text-indigo-600 px-1.5 py-0 text-[10px] font-medium border border-indigo-100">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Status dot */}
         <div className="hidden md:block">
           {getConversationStatusBadge(item.conversation_status)}

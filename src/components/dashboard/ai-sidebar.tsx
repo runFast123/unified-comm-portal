@@ -42,9 +42,6 @@ export interface AISidebarProps {
     preview: string
     date: string
   }[]
-  onApprove?: (replyId: string) => void
-  onEdit?: (replyId: string) => void
-  onDismiss?: (replyId: string) => void
 }
 
 function SidebarSection({
@@ -200,7 +197,6 @@ function SentimentSection({ trendLabel, trendColor, TrendIcon, trend, posCount, 
           </div>
         </div>
 
-        <p className="text-[10px] text-teal-600 text-center">Click to see message details</p>
       </button>
 
       {/* Floating table window — overlay, not inline */}
@@ -274,9 +270,6 @@ export function AISidebar({
   kbArticles,
   sentimentHistory = [],
   customerHistory = [],
-  onApprove,
-  onEdit,
-  onDismiss,
 }: AISidebarProps) {
   const [draftExpanded, setDraftExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -443,21 +436,11 @@ export function AISidebar({
               </button>
             </div>
 
-            {/* Action buttons */}
+            {/* Hint for pending drafts */}
             {aiReply.status === 'pending_approval' && (
-              <div className="flex gap-2">
-                <Button size="sm" variant="primary" className="flex-1" onClick={() => onApprove?.(aiReply.id)}>
-                  <ThumbsUp size={13} />
-                  Approve
-                </Button>
-                <Button size="sm" variant="secondary" className="flex-1" onClick={() => onEdit?.(aiReply.id)}>
-                  <Pencil size={13} />
-                  Edit
-                </Button>
-                <Button size="sm" variant="ghost" className="px-2" onClick={() => onDismiss?.(aiReply.id)}>
-                  <X size={13} />
-                </Button>
-              </div>
+              <p className="text-[10px] text-center text-teal-600 bg-teal-50 rounded-lg py-1.5 mt-1">
+                Use the action bar below to approve, edit, or send this draft
+              </p>
             )}
           </div>
         </SidebarSection>

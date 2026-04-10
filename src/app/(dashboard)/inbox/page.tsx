@@ -197,7 +197,7 @@ export default function InboxPage() {
           accounts!messages_account_id_fkey ( id, name, phase2_enabled ),
           message_classifications ( category, sentiment, urgency, confidence, classified_at ),
           ai_replies ( status, created_at ),
-          conversations!messages_conversation_id_fkey ( status, assigned_to )
+          conversations!messages_conversation_id_fkey ( status, assigned_to, tags )
         `)
         .eq('direction', 'inbound')
 
@@ -308,6 +308,7 @@ export default function InboxPage() {
           conversation_id: msg.conversation_id,
           conversation_status: conversation?.status ?? null,
           assigned_to: conversation?.assigned_to ?? null,
+          tags: conversation?.tags ?? null,
           timestamp: msg.received_at || msg.timestamp,
           is_spam: msg.is_spam ?? false,
           spam_reason: msg.spam_reason ?? null,
@@ -368,7 +369,7 @@ export default function InboxPage() {
           accounts!messages_account_id_fkey ( id, name, phase2_enabled ),
           message_classifications ( category, sentiment, urgency, confidence, classified_at ),
           ai_replies ( status, created_at ),
-          conversations!messages_conversation_id_fkey ( status, assigned_to )
+          conversations!messages_conversation_id_fkey ( status, assigned_to, tags )
         `)
         .eq('direction', 'inbound')
         .lt('received_at', lastItem.timestamp)
@@ -413,6 +414,7 @@ export default function InboxPage() {
             ai_confidence: classification?.confidence != null ? Math.round(Number(classification.confidence) * 100) : null,
             conversation_status: (conv?.status || 'active') as any,
             assigned_to: conv?.assigned_to || null,
+            tags: conv?.tags || null,
           }
         })
         setItems(prev => [...prev, ...mapped])

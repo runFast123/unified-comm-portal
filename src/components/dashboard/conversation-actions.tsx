@@ -33,8 +33,10 @@ interface ConversationActionsProps {
   aiReplyStatus: string | null
   aiDraftText: string | null
   participantEmail: string | null
+  participantName?: string | null
   emailSubject: string | null
   teamsChatId?: string | null
+  conversationStatus?: string
 }
 
 export function ConversationActions({
@@ -46,8 +48,10 @@ export function ConversationActions({
   aiReplyStatus,
   aiDraftText,
   participantEmail,
+  participantName,
   emailSubject,
   teamsChatId,
+  conversationStatus = 'active',
 }: ConversationActionsProps) {
   const router = useRouter()
   const { toast } = useToast()
@@ -70,12 +74,30 @@ export function ConversationActions({
         .eq('replied', false)
     } catch { /* non-critical */ }
   }, [conversationId])
-  const [showManualReply, setShowManualReply] = useState(false)
+  const isActiveConvo = conversationStatus === 'active' || conversationStatus === 'in_progress' || conversationStatus === 'escalated' || conversationStatus === 'waiting_on_customer'
+  const [showManualReply, setShowManualReply] = useState(isActiveConvo)
   const [showPreview, setShowPreview] = useState(false)
   const [showEditReply, setShowEditReply] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [manualText, setManualText] = useState('')
+  const [draftSaved, setDraftSaved] = useState(false)
+  const draftTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const sendReplyRef = useRef<(() => void) | null>(null)
+
+  // Draft auto-save: restore from localStorage on mount
+  const [manualText, setManualText] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return localStorage.getItem(`draft-${conversationId}`) || ''
+  })
   const [editText, setEditText] = useState(aiDraftText || '')
+
+  // Template variable interpolation
+  const interpolateVars = useCallback((text: string): string => {
+    return text
+      .replace(/\{\{customer_name\}\}/gi, participantName || participantEmail || 'Customer')
+      .replace(/\{\{account_name\}\}/gi, accountName.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim())
+      .replace(/\{\{email_subject\}\}/gi, emailSubject || '')
+      .replace(/\{\{channel\}\}/gi, channel)
+  }, [participantName, participantEmail, accountName, emailSubject, channel])
 
   // Template state
   const [templates, setTemplates] = useState<ReplyTemplate[]>([])
@@ -164,6 +186,18 @@ export function ConversationActions({
     const value = e.target.value
     setManualText(value)
 
+    // Auto-save draft to localStorage (debounced)
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(() => {
+      if (value.trim()) {
+        localStorage.setItem(`draft-${conversationId}`, value)
+        setDraftSaved(true)
+        setTimeout(() => setDraftSaved(false), 2000)
+      } else {
+        localStorage.removeItem(`draft-${conversationId}`)
+      }
+    }, 500)
+
     // Detect "/" shortcut pattern
     const cursorPos = e.target.selectionStart
     const textBeforeCursor = value.substring(0, cursorPos)
@@ -196,7 +230,7 @@ export function ConversationActions({
       const shortcutText = match[1]
       const startIndex = textBeforeCursor.lastIndexOf(shortcutText)
       const before = manualText.substring(0, startIndex)
-      const newText = before + template.content + textAfterCursor
+      const newText = before + interpolateVars(template.content) + textAfterCursor
       setManualText(newText)
 
       // Set cursor position after inserted content
@@ -230,8 +264,15 @@ export function ConversationActions({
     }
   }, [manualText])
 
-  // Handle keyboard navigation in shortcut popup
+  // Handle keyboard navigation in shortcut popup + Ctrl+Enter to send
   const handleManualTextKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Ctrl+Enter or Cmd+Enter to send reply
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !shortcutQuery) {
+      e.preventDefault()
+      if (manualText.trim()) sendReplyRef.current?.()
+      return
+    }
+
     if (shortcutQuery === null || shortcutTemplates.length === 0) return
 
     if (e.key === 'ArrowDown') {
@@ -247,7 +288,13 @@ export function ConversationActions({
       e.preventDefault()
       setShortcutQuery(null)
     }
-  }, [shortcutQuery, shortcutTemplates, shortcutIndex, handleShortcutSelect])
+  }, [shortcutQuery, shortcutTemplates, shortcutIndex, handleShortcutSelect, manualText])
+
+  // Clear draft from localStorage on successful send
+  const clearDraft = useCallback(() => {
+    localStorage.removeItem(`draft-${conversationId}`)
+    setManualText('')
+  }, [conversationId])
 
   // Get unique categories from templates
   const categories = Array.from(
@@ -269,7 +316,7 @@ export function ConversationActions({
   })
 
   const handleTemplateSelect = useCallback(async (template: ReplyTemplate) => {
-    setManualText(template.content)
+    setManualText(interpolateVars(template.content))
     setShowManualReply(true)
     setShowEditReply(false)
     setShowTemplates(false)
@@ -512,14 +559,17 @@ export function ConversationActions({
         toast.warning('Message saved but sending failed.')
       }
       setShowManualReply(false)
-      setManualText('')
+      clearDraft()
       router.refresh()
     } catch (err: any) {
       toast.error('Failed: ' + err.message)
     } finally {
       setLoading(null)
     }
-  }, [manualText, conversationId, accountId, channel, accountName, participantEmail, router, toast, emailSubject, teamsChatId, markWaitingOnCustomer])
+  }, [manualText, conversationId, accountId, channel, accountName, participantEmail, router, toast, emailSubject, teamsChatId, markWaitingOnCustomer, clearDraft])
+
+  // Keep sendReplyRef updated for Ctrl+Enter shortcut
+  sendReplyRef.current = handleManualReply
 
   const handleMarkReplied = useCallback(async () => {
     setLoading('mark_replied')
@@ -641,15 +691,35 @@ export function ConversationActions({
     }
   }, [conversationId, router, toast])
 
+  // Global keyboard shortcuts for conversation actions
+  useEffect(() => {
+    function handleGlobalKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'SELECT') return
+      if (e.key === 'E' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault()
+        handleEscalate()
+      }
+      if (e.key === 'R' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault()
+        handleResolve()
+      }
+    }
+    document.addEventListener('keydown', handleGlobalKey)
+    return () => document.removeEventListener('keydown', handleGlobalKey)
+  }, [handleEscalate, handleResolve])
+
   return (
     <div className="sticky bottom-0 bg-white border-t border-gray-200 py-3 px-4 z-10 space-y-3">
-      {/* Warning banner — channel-aware */}
-      <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-        <Info size={14} className="shrink-0 mt-0.5" />
-        <span>
-          Replied from {channel === 'teams' ? 'Teams' : channel === 'whatsapp' ? 'WhatsApp' : 'Gmail'} directly? Click <strong>&quot;Mark as Replied&quot;</strong> to sync the status here.
-        </span>
-      </div>
+      {/* Warning banner — only show for active/unreplied conversations */}
+      {isActiveConvo && (
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+          <Info size={14} className="shrink-0 mt-0.5" />
+          <span>
+            Replied from {channel === 'teams' ? 'Teams' : channel === 'whatsapp' ? 'WhatsApp' : 'Gmail'} directly? Click <strong>&quot;Mark as Replied&quot;</strong> to sync the status here.
+          </span>
+        </div>
+      )}
 
       {/* Reply compose areas */}
       {showManualReply && (
@@ -725,6 +795,10 @@ export function ConversationActions({
               {loading === 'manual' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
               Send Reply
             </Button>
+            <span className="text-[10px] text-gray-400 flex items-center gap-2 ml-auto">
+              {draftSaved && <span className="text-green-500">Draft saved</span>}
+              <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[9px] font-mono">Ctrl+Enter</kbd> to send
+            </span>
           </div>
         </div>
       )}
@@ -758,16 +832,17 @@ export function ConversationActions({
             Approve &amp; Send
           </Button>
         )}
-        <Button
-          size="sm"
-          variant="secondary"
-          className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
-          onClick={() => { setShowEditReply(!showEditReply); setShowManualReply(false) }}
-          disabled={!aiDraftText}
-        >
-          <Pencil size={14} />
-          Edit &amp; Send
-        </Button>
+        {aiDraftText && (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+            onClick={() => { setShowEditReply(!showEditReply); setShowManualReply(false) }}
+          >
+            <Pencil size={14} />
+            Edit &amp; Send
+          </Button>
+        )}
         <Button
           size="sm"
           variant="secondary"

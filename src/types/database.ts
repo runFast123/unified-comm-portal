@@ -257,6 +257,7 @@ export interface InboxItem {
   conversation_status: ConversationStatus | null
   assigned_to: string | null
   timestamp: string
+  tags?: string[] | null
   is_spam?: boolean
   spam_reason?: string | null
 }

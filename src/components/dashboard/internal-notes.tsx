@@ -15,6 +15,7 @@ interface Note {
 
 interface InternalNotesProps {
   conversationId: string
+  authorName?: string
 }
 
 const STORAGE_KEY_PREFIX = 'conversation-notes-'
@@ -38,7 +39,7 @@ function formatNoteTime(timestamp: string): string {
   })
 }
 
-export function InternalNotes({ conversationId }: InternalNotesProps) {
+export function InternalNotes({ conversationId, authorName }: InternalNotesProps) {
   const [notes, setNotes] = useState<Note[]>([])
   const [newNoteText, setNewNoteText] = useState('')
   const [useSupabase, setUseSupabase] = useState(true)
@@ -117,7 +118,7 @@ export function InternalNotes({ conversationId }: InternalNotesProps) {
     const note: Note = {
       id: crypto.randomUUID(),
       text: newNoteText.trim(),
-      author: 'Agent',
+      author: authorName || 'Agent',
       timestamp: new Date().toISOString(),
       pinned: false,
     }

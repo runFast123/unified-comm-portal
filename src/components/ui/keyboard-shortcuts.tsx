@@ -28,12 +28,18 @@ const SHORTCUT_CATEGORIES: ShortcutCategory[] = [
     ],
   },
   {
-    label: 'Actions',
+    label: 'Conversation Actions',
     shortcuts: [
-      { keys: ['a'], description: 'Archive conversation' },
-      { keys: ['e'], description: 'Escalate conversation' },
-      { keys: ['r'], description: 'Reply to conversation' },
-      { keys: ['s'], description: 'Star / unstar' },
+      { keys: ['Ctrl', 'Enter'], description: 'Send reply' },
+      { keys: ['Ctrl', 'Shift', 'E'], description: 'Escalate conversation' },
+      { keys: ['Ctrl', 'Shift', 'R'], description: 'Resolve conversation' },
+    ],
+  },
+  {
+    label: 'Templates',
+    shortcuts: [
+      { keys: ['/'], description: 'Open template shortcuts in reply box' },
+      { keys: ['{{'], description: 'Variables: customer_name, account_name, email_subject' },
     ],
   },
   {
