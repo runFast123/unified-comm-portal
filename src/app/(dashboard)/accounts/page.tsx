@@ -38,6 +38,7 @@ export default function AccountsPage() {
 
   useEffect(() => {
     async function fetchAccounts() {
+      console.log('[Accounts] Fetching with companyAccountIds:', companyAccountIds.length, companyAccountIds)
       const supabase = createClient()
 
       let accountsQuery = supabase
