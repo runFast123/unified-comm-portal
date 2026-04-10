@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useState, useEffect } from 'react'
 
 interface UserContextType {
   email: string
@@ -25,10 +25,29 @@ export function UserProvider({ user, serverCompanyAccountIds, children }: {
   serverCompanyAccountIds?: string[]
   children: React.ReactNode
 }) {
-  // Use server-provided sibling IDs (bypasses RLS), fallback to single account_id
-  const companyAccountIds = serverCompanyAccountIds && serverCompanyAccountIds.length > 0
+  // Start with server-provided IDs or single account_id
+  const initialIds = serverCompanyAccountIds && serverCompanyAccountIds.length > 0
     ? serverCompanyAccountIds
     : user.account_id ? [user.account_id] : []
+
+  const [companyAccountIds, setCompanyAccountIds] = useState<string[]>(initialIds)
+
+  // For non-admin users: fetch sibling accounts via API to ensure we always get the full list
+  // This is the reliable fallback — the server-side layout may cache results
+  useEffect(() => {
+    if (user.role === 'admin' || !user.account_id) return
+    // If server already provided multiple IDs, skip the API call
+    if (serverCompanyAccountIds && serverCompanyAccountIds.length > 1) return
+
+    fetch('/api/user-accounts')
+      .then(res => res.json())
+      .then(data => {
+        if (data.accountIds && data.accountIds.length > 0) {
+          setCompanyAccountIds(data.accountIds)
+        }
+      })
+      .catch(() => { /* keep the initial IDs */ })
+  }, [user.role, user.account_id, serverCompanyAccountIds])
 
   return (
     <UserContext.Provider value={{ ...user, isAdmin: user.role === 'admin', companyAccountIds }}>
