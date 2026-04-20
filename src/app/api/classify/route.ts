@@ -225,11 +225,35 @@ export async function POST(request: Request) {
           is_spam: true,
           spam_reason: 'ai_classified_newsletter',
           reply_required: false,
+          replied: true, // prevents message from counting as pending
         })
         .eq('id', message_id)
 
       if (spamUpdateError) {
         console.error('Failed to update message spam status after AI classification:', spamUpdateError)
+      }
+
+      // If ai_config.auto_resolve_marketing is enabled, also resolve the
+      // conversation so it drops out of the active inbox entirely.
+      try {
+        const { data: cfg } = await supabase
+          .from('ai_config')
+          .select('auto_resolve_marketing')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (cfg?.auto_resolve_marketing && routingConversationId) {
+          await supabase
+            .from('conversations')
+            .update({ status: 'resolved' })
+            .eq('id', routingConversationId)
+            .in('status', ['active', 'in_progress', 'waiting_on_customer'])
+          logInfo('ai', 'auto_resolved_newsletter', `Auto-resolved conversation ${routingConversationId} (newsletter)`, { message_id, conversation_id: routingConversationId })
+        }
+      } catch (resErr) {
+        console.error('Auto-resolve newsletter conversation failed:', resErr)
       }
     }
 

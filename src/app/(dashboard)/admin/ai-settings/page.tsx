@@ -49,6 +49,7 @@ export default function AISettingsPage() {
   const [confidenceThreshold, setConfidenceThreshold] = useState(80)
   const [trustThreshold, setTrustThreshold] = useState(5)
   const [fallbackBehavior, setFallbackBehavior] = useState('escalate')
+  const [autoResolveMarketing, setAutoResolveMarketing] = useState(true)
 
   const [prompts, setPrompts] = useState({
     email: `You are a professional customer support agent for a telecommunications company. Respond to this email in a formal, courteous tone. Address the customer by name. Include relevant account details and next steps. Sign off with "Best regards, Customer Support Team".`,
@@ -113,6 +114,9 @@ export default function AISettingsPage() {
         if (aiConfig.fallback_behavior) {
           setFallbackBehavior(aiConfig.fallback_behavior)
         }
+        if (aiConfig.auto_resolve_marketing !== undefined && aiConfig.auto_resolve_marketing !== null) {
+          setAutoResolveMarketing(aiConfig.auto_resolve_marketing)
+        }
       }
 
       // Load accounts
@@ -161,6 +165,7 @@ export default function AISettingsPage() {
         confidence_threshold: confidenceThreshold / 100,
         trust_threshold: trustThreshold,
         fallback_behavior: fallbackBehavior,
+        auto_resolve_marketing: autoResolveMarketing,
       })
 
       if (error) {
@@ -176,7 +181,7 @@ export default function AISettingsPage() {
       setProviderSaving(false)
       setTimeout(() => setProviderResult(null), 4000)
     }
-  }, [providerName, baseUrl, apiKey, model, maxTokens, temperature, prompts, confidenceThreshold, trustThreshold, fallbackBehavior])
+  }, [providerName, baseUrl, apiKey, model, maxTokens, temperature, prompts, confidenceThreshold, trustThreshold, fallbackBehavior, autoResolveMarketing])
 
   const handleTestConnection = useCallback(async () => {
     setTesting(true)
@@ -227,16 +232,23 @@ export default function AISettingsPage() {
       const enableTrustMode = trustThreshold > 0
       const errors: string[] = []
 
-      // 1. Save prompts + settings to ai_config (primary storage)
+      // 1. Save ALL settings to ai_config (provider + prompts + thresholds)
       const { error: configError } = await supabase
         .from('ai_config')
         .update({
+          provider_name: providerName,
+          base_url: baseUrl,
+          api_key: apiKey,
+          model,
+          max_tokens: maxTokens,
+          temperature,
           email_prompt: prompts.email,
           teams_prompt: prompts.teams,
           whatsapp_prompt: prompts.whatsapp,
           confidence_threshold: thresholdDecimal,
           trust_threshold: trustThreshold,
           fallback_behavior: fallbackBehavior,
+          auto_resolve_marketing: autoResolveMarketing,
         })
         .eq('is_active', true)
 
@@ -302,7 +314,7 @@ export default function AISettingsPage() {
       setSaving(false)
       setTimeout(() => setSaveResult(null), 4000)
     }
-  }, [confidenceThreshold, trustThreshold, prompts, fallbackBehavior])
+  }, [confidenceThreshold, trustThreshold, prompts, fallbackBehavior, providerName, baseUrl, apiKey, model, maxTokens, temperature, autoResolveMarketing])
 
   function AIUsageCard() {
     const [usageStats, setUsageStats] = useState({ classifications: 0, replies: 0, sent: 0 })
@@ -577,6 +589,29 @@ export default function AISettingsPage() {
           <p className="text-xs text-gray-500">
             {enabledCategories.size} of {allCategories.length} categories enabled
           </p>
+
+          {/* Auto-resolve Newsletter/Marketing toggle */}
+          <div className="mt-4 border-t border-gray-200 pt-4">
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-amber-50/40 p-3 hover:bg-amber-50 transition-colors">
+              <input
+                type="checkbox"
+                checked={autoResolveMarketing}
+                onChange={(e) => setAutoResolveMarketing(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-800">Auto-resolve Newsletter / Marketing</span>
+                  <span className="rounded-full bg-amber-100 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                    Recommended
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-600 leading-relaxed">
+                  When the AI classifies an inbound message as <strong>Newsletter/Marketing</strong> with &gt;70% confidence, the conversation is automatically marked as <strong>resolved</strong> so it drops out of the active inbox. You can still find it in the Newsletter view.
+                </p>
+              </div>
+            </label>
+          </div>
         </div>
       </Card>
 

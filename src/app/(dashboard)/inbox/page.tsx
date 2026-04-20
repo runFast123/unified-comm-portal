@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { CheckSquare, CheckCheck, Archive, UserPlus, Loader2, Inbox, List, Columns, LayoutGrid, X, Sparkles, User, ShieldAlert, ShieldCheck, Mail } from 'lucide-react'
+import { CheckSquare, CheckCheck, Archive, UserPlus, Loader2, Inbox, List, Columns, LayoutGrid, X, Sparkles, User, ShieldAlert, ShieldCheck, Mail, CircleCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InboxList } from '@/components/inbox/inbox-list'
 import { InboxFiltersBar, type InboxFilters } from '@/components/inbox/inbox-filters'
@@ -111,7 +111,7 @@ export default function InboxPage() {
   const [selectedItem, setSelectedItem] = useState<InboxItem | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'approve' | 'archive' | 'smart-approve' | 'mark_replied'
+    type: 'approve' | 'archive' | 'smart-approve' | 'mark_replied' | 'resolve' | 'assign_me'
     count: number
     totalCount?: number
   } | null>(null)
@@ -798,6 +798,10 @@ export default function InboxPage() {
                 `Are you sure you want to archive ${confirmAction.count} message${confirmAction.count > 1 ? 's' : ''}? This cannot be undone.`}
               {confirmAction.type === 'mark_replied' &&
                 `Mark ${confirmAction.count} message${confirmAction.count > 1 ? 's' : ''} as replied? Use this if you replied from Gmail directly.`}
+              {confirmAction.type === 'resolve' &&
+                `Resolve the conversation${confirmAction.count > 1 ? 's' : ''} for ${confirmAction.count} selected message${confirmAction.count > 1 ? 's' : ''}? The conversation status will change to "resolved" and the messages will be marked replied.`}
+              {confirmAction.type === 'assign_me' &&
+                `Assign the conversation${confirmAction.count > 1 ? 's' : ''} for ${confirmAction.count} selected message${confirmAction.count > 1 ? 's' : ''} to you?`}
             </p>
             <div className="mt-5 flex justify-end gap-3">
               <Button
@@ -869,6 +873,63 @@ export default function InboxPage() {
                         toast.success(`Marked ${messageIds.length} message(s) as replied.`)
                         clearSelection()
                       }
+                    } else if (confirmAction.type === 'resolve') {
+                      // Mark conversations as resolved for all selected items
+                      const convIds = Array.from(new Set(
+                        filteredItems
+                          .filter((item) => selectedIds.has(item.id))
+                          .map((item) => item.conversation_id)
+                          .filter(Boolean)
+                      ))
+                      if (convIds.length === 0) {
+                        toast.warning('Nothing to resolve.')
+                      } else {
+                        const { error: err } = await supabase
+                          .from('conversations')
+                          .update({ status: 'resolved' })
+                          .in('id', convIds)
+                        if (err) {
+                          toast.error('Failed to resolve: ' + err.message)
+                        } else {
+                          // Also mark messages replied so they don't still count as pending
+                          const msgIds = filteredItems
+                            .filter((item) => selectedIds.has(item.id))
+                            .map((item) => item.message_id)
+                          await supabase
+                            .from('messages')
+                            .update({ replied: true, reply_required: false })
+                            .in('id', msgIds)
+                          setItems((prev) => prev.filter((item) => !msgIds.includes(item.message_id)))
+                          toast.success(`Resolved ${convIds.length} conversation(s).`)
+                          clearSelection()
+                        }
+                      }
+                    } else if (confirmAction.type === 'assign_me') {
+                      if (!currentUserId) {
+                        toast.error('Not signed in.')
+                      } else {
+                        const convIds = Array.from(new Set(
+                          filteredItems
+                            .filter((item) => selectedIds.has(item.id))
+                            .map((item) => item.conversation_id)
+                            .filter(Boolean)
+                        ))
+                        if (convIds.length === 0) {
+                          toast.warning('Nothing to assign.')
+                        } else {
+                          const { error: err } = await supabase
+                            .from('conversations')
+                            .update({ assigned_to: currentUserId })
+                            .in('id', convIds)
+                          if (err) {
+                            toast.error('Failed to assign: ' + err.message)
+                          } else {
+                            toast.success(`Assigned ${convIds.length} conversation(s) to you.`)
+                            clearSelection()
+                            fetchInboxItems()
+                          }
+                        }
+                      }
                     } else if (confirmAction.type === 'archive') {
                       const messageIds = selectedIds.size > 0
                         ? filteredItems.filter((item) => selectedIds.has(item.id)).map((item) => item.message_id)
@@ -903,7 +964,11 @@ export default function InboxPage() {
                   }
                 }}
               >
-                {confirmAction.type === 'archive' ? 'Archive' : confirmAction.type === 'mark_replied' ? 'Mark Replied' : 'Approve'}
+                {confirmAction.type === 'archive' ? 'Archive'
+                  : confirmAction.type === 'mark_replied' ? 'Mark Replied'
+                  : confirmAction.type === 'resolve' ? 'Resolve'
+                  : confirmAction.type === 'assign_me' ? 'Assign to me'
+                  : 'Approve'}
               </Button>
             </div>
           </div>
@@ -937,6 +1002,28 @@ export default function InboxPage() {
               <span className="sm:hidden">Approve</span>
             </Button>
             <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setConfirmAction({ type: 'mark_replied', count: selectedIds.size })
+              }}
+            >
+              <CheckCheck className="h-4 w-4" />
+              <span className="hidden sm:inline">Mark Replied</span>
+              <span className="sm:hidden">Replied</span>
+            </Button>
+            <Button
+              variant="success"
+              size="sm"
+              onClick={() => {
+                setConfirmAction({ type: 'resolve', count: selectedIds.size })
+              }}
+            >
+              <CircleCheck className="h-4 w-4" />
+              <span className="hidden sm:inline">Resolve</span>
+              <span className="sm:hidden">Resolve</span>
+            </Button>
+            <Button
               variant="danger"
               size="sm"
               onClick={() => {
@@ -952,11 +1039,15 @@ export default function InboxPage() {
               size="sm"
               className="hidden sm:inline-flex"
               onClick={() => {
-                toast.info('Assign to: Coming soon')
+                if (!currentUserId) {
+                  toast.error('Not signed in.')
+                  return
+                }
+                setConfirmAction({ type: 'assign_me', count: selectedIds.size })
               }}
             >
               <UserPlus className="h-4 w-4" />
-              Assign to...
+              Assign to me
             </Button>
             <button
               onClick={clearSelection}

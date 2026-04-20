@@ -20,14 +20,16 @@ export function SuggestedReplies({ conversationId, latestMessage, category }: Su
     // Find the manual reply textarea and insert text directly
     const textarea = document.querySelector('textarea[placeholder*="Type your reply"]') as HTMLTextAreaElement | null
     if (textarea) {
-      textarea.value = text
-      textarea.dispatchEvent(new Event('input', { bubbles: true }))
-      // Also trigger React's onChange by setting nativeInputValueSetter
+      // Use React's native value setter so the controlled component's onChange fires
+      // (assigning .value directly first would prime React's value tracker and cause
+      // the subsequent change event to be skipped, leaving manualText empty)
       const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
       if (nativeSetter) {
         nativeSetter.call(textarea, text)
-        textarea.dispatchEvent(new Event('input', { bubbles: true }))
+      } else {
+        textarea.value = text
       }
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
       textarea.focus()
       setInserted(text)
       setTimeout(() => setInserted(null), 2000)
@@ -45,8 +47,10 @@ export function SuggestedReplies({ conversationId, latestMessage, category }: Su
               const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
               if (setter) {
                 setter.call(ta, text)
-                ta.dispatchEvent(new Event('input', { bubbles: true }))
+              } else {
+                ta.value = text
               }
+              ta.dispatchEvent(new Event('input', { bubbles: true }))
               ta.focus()
             }
           }, 300)
@@ -84,8 +88,8 @@ export function SuggestedReplies({ conversationId, latestMessage, category }: Su
   if (!loading && aiSuggestions.length === 0 && templates.length === 0) return null
 
   return (
-    <div className="shrink-0 border-t border-gray-100 bg-gray-50/50 px-4 py-2">
-      <div className="flex flex-wrap items-center gap-2 pb-1">
+    <div className="shrink-0 border-t border-gray-100 bg-gray-50/50 px-4 sm:px-6 py-3">
+      <div className="flex flex-wrap items-center gap-2.5">
         {loading && (
           <div className="flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -97,7 +101,7 @@ export function SuggestedReplies({ conversationId, latestMessage, category }: Su
           <button
             key={`ai-${i}`}
             onClick={() => handleInsert(s)}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-700 hover:bg-teal-100 active:bg-teal-200 transition-colors max-w-[280px]"
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-3.5 py-2 text-xs text-teal-700 hover:bg-teal-100 active:bg-teal-200 transition-colors max-w-[280px]"
             title={`Click to insert: ${s}`}
           >
             {inserted === s ? <Check className="h-3 w-3 shrink-0 text-green-600" /> : <Sparkles className="h-3 w-3 shrink-0" />}
@@ -109,7 +113,7 @@ export function SuggestedReplies({ conversationId, latestMessage, category }: Su
           <button
             key={`t-${t.id}`}
             onClick={() => handleInsert(t.content)}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs text-purple-700 hover:bg-purple-100 active:bg-purple-200 transition-colors max-w-[220px]"
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3.5 py-2 text-xs text-purple-700 hover:bg-purple-100 active:bg-purple-200 transition-colors max-w-[220px]"
             title={`Click to insert: ${t.content.substring(0, 100)}`}
           >
             {inserted === t.content ? <Check className="h-3 w-3 shrink-0 text-green-600" /> : <FileText className="h-3 w-3 shrink-0" />}

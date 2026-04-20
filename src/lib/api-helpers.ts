@@ -129,6 +129,24 @@ export async function findOrCreateConversation(
     .single()
 
   if (error || !newConv) {
+    // Race-condition safety: if a parallel webhook just created the same
+    // conversation (unique index on account_id+teams_chat_id for Teams),
+    // re-run the lookup and return whichever row won.
+    // Postgres unique-violation code is 23505.
+    const isUniqueViolation =
+      (error as { code?: string } | null)?.code === '23505' ||
+      /duplicate key|unique constraint/i.test(error?.message || '')
+    if (isUniqueViolation && params.channel === 'teams' && params.teams_chat_id) {
+      const { data: raceWinner } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('account_id', params.account_id)
+        .eq('channel', 'teams')
+        .eq('teams_chat_id', params.teams_chat_id)
+        .limit(1)
+        .maybeSingle()
+      if (raceWinner) return raceWinner.id
+    }
     throw new Error(`Failed to create conversation: ${error?.message}`)
   }
 

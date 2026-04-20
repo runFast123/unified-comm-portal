@@ -250,7 +250,7 @@ export default async function ConversationPage({
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       {/* Conversation header */}
-      <div className="shrink-0 border-b border-gray-200 bg-white px-4 sm:px-6 py-3">
+      <div className="shrink-0 border-b border-gray-200 bg-white px-4 sm:px-6 py-4">
         {/* Top row: back + name + actions */}
         <div className="flex items-center gap-3 sm:gap-4">
           <Link
@@ -259,43 +259,25 @@ export default async function ConversationPage({
           >
             <ArrowLeft size={20} />
           </Link>
-          <ChannelIcon channel={channel} size={20} className="shrink-0" />
+          <ChannelIcon channel={channel} size={22} className="shrink-0" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-semibold text-gray-900 text-base truncate max-w-[200px] sm:max-w-[300px]">{participantName}</h1>
+              <h1 className="font-semibold text-gray-900 text-lg truncate max-w-[240px] sm:max-w-[360px]">{participantName}</h1>
               <BookmarkButton conversationId={id} participantName={participantName} accountName={accountName} />
+              {channel === 'teams' && conversation.teams_chat_id && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                  {conversation.teams_chat_id.includes('uni01_') ? '1:1 Direct Message' : 'Group Chat'}
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
               <span>{accountName.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '')}</span>
               <span className="text-gray-300">&middot;</span>
               <span>{getChannelLabel(channel)}</span>
-              {channel === 'teams' && conversation.teams_chat_id && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
-                  <span className={conversation.teams_chat_id.includes('uni01_') ? '' : 'mr-0.5'}>
-                    {conversation.teams_chat_id.includes('uni01_') ? '1:1 Direct Message' : 'Group Chat'}
-                  </span>
-                </span>
-              )}
               {channel !== 'teams' && conversation.participant_email && (
                 <span className="hidden sm:inline text-gray-400">&middot; {conversation.participant_email}</span>
               )}
             </div>
-            {/* Teams context bar */}
-            {channel === 'teams' && (
-              <div className="flex items-center gap-2 text-[10px] text-indigo-500 mt-0.5">
-                <span className="font-medium">Teams</span>
-                <span className="text-indigo-300">|</span>
-                <span>{accountName}</span>
-                {conversation.participant_email && (
-                  <>
-                    <span className="text-indigo-300">|</span>
-                    <span>{conversation.participant_email}</span>
-                  </>
-                )}
-                <span className="text-indigo-300">|</span>
-                <span>{messageCount} messages in this chat</span>
-              </div>
-            )}
           </div>
           {/* Status & priority badges */}
           <div className="flex items-center gap-2 shrink-0">
@@ -304,7 +286,7 @@ export default async function ConversationPage({
               currentStatus={status}
             />
             <span className={cn(
-              'rounded-full px-2 py-0.5 text-xs font-medium',
+              'rounded-full px-2.5 py-1 text-xs font-medium',
               getPriorityColor(priority)
             )}>
               {priority}
@@ -317,7 +299,7 @@ export default async function ConversationPage({
           </div>
         </div>
         {/* Timer row */}
-        <div className="flex items-center gap-3 text-[10px] text-gray-400 mt-1.5 ml-[52px] sm:ml-[60px] flex-wrap">
+        <div className="flex items-center gap-3 text-[11px] text-gray-400 mt-2 ml-[52px] sm:ml-[62px] flex-wrap">
           {firstMsgAt && <span>Active {formatDuration(activeDurationMs)}</span>}
           {lastMsgAt && <span>&middot; Last reply {formatDuration(lastReplyMs)} ago</span>}
           <span>&middot; {messageCount} msgs ({inboundCount} inbound)</span>
@@ -366,7 +348,7 @@ export default async function ConversationPage({
           />
 
           {/* Bottom action bar */}
-          <div className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 py-3">
+          <div className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 py-4">
             <ConversationActions
               conversationId={id}
               accountId={conversation.account_id}
@@ -385,7 +367,7 @@ export default async function ConversationPage({
         </div>
 
         {/* Right sidebar - below thread on mobile, side panel on desktop */}
-        <div className="w-full lg:w-80 shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-gray-200 bg-gray-50 p-4 space-y-4">
+        <div className="w-full lg:w-96 shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-gray-200 bg-gray-50 p-5 space-y-5">
           <AISidebar
             classification={classification}
             aiReply={mappedAiReply}

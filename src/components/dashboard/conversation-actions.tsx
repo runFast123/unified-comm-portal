@@ -555,14 +555,23 @@ export function ConversationActions({
       if (res.ok) {
         toast.success('Manual reply sent!')
         await markWaitingOnCustomer()
+        // Only clear draft + close textarea on real success
+        setShowManualReply(false)
+        clearDraft()
       } else {
-        toast.warning('Message saved but sending failed.')
+        // Send failed — keep the draft and textarea open so the agent can retry
+        // without retyping. Surface the underlying error if we can read it.
+        let errMsg = ''
+        try {
+          const data = await res.json()
+          errMsg = data?.error ? ` (${data.error})` : ''
+        } catch { /* non-JSON response */ }
+        toast.warning(`Message saved locally but delivery failed${errMsg}. Click Send Reply again to retry.`)
       }
-      setShowManualReply(false)
-      clearDraft()
       router.refresh()
     } catch (err: any) {
-      toast.error('Failed: ' + err.message)
+      // Network error — also keep the draft so the agent can retry
+      toast.error(`Failed: ${err.message}. Your draft is kept; click Send Reply to retry.`)
     } finally {
       setLoading(null)
     }
@@ -757,8 +766,8 @@ export function ConversationActions({
               onChange={handleManualTextChange}
               onKeyDown={handleManualTextKeyDown}
               placeholder="Type your reply... (use /shortcut for quick templates)"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 min-h-[100px] resize-y"
-              rows={4}
+              className="w-full rounded-lg border border-gray-300 px-3.5 py-3 text-sm leading-relaxed focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 min-h-[140px] resize-y"
+              rows={6}
             />
             {/* Shortcut autocomplete popup */}
             {shortcutQuery !== null && shortcutTemplates.length > 0 && (

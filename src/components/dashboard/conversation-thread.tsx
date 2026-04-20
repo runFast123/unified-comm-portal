@@ -445,7 +445,7 @@ export function ConversationThread({ messages, channel }: ConversationThreadProp
   let prevTimestamp: string | null = null
 
   return (
-    <div className="space-y-3 py-4">
+    <div className="space-y-5 py-6">
       {messages.map((message, idx) => {
         const isOutbound = message.direction === 'outbound'
         const msgDate = formatDate(message.timestamp)
