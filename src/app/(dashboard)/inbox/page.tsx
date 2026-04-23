@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { CheckSquare, CheckCheck, Archive, UserPlus, Loader2, Inbox, List, Columns, LayoutGrid, X, Sparkles, User, ShieldAlert, ShieldCheck, Mail, CircleCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InboxList } from '@/components/inbox/inbox-list'
@@ -312,6 +313,7 @@ export default function InboxPage() {
           account_name: account?.name ?? 'Unknown Account',
           account_id: msg.account_id,
           subject_or_preview: msg.email_subject || msg.message_text || '',
+          body_preview: msg.message_text ? String(msg.message_text).replace(/\s+/g, ' ').trim().substring(0, 280) : null,
           category: classification?.category ?? null,
           sentiment: classification?.sentiment ?? null,
           urgency,
@@ -419,6 +421,7 @@ export default function InboxPage() {
             channel: msg.channel,
             sender_name: msg.sender_name,
             subject_or_preview: msg.email_subject || msg.message_text?.substring(0, 100) || 'No preview',
+            body_preview: msg.message_text ? String(msg.message_text).replace(/\s+/g, ' ').trim().substring(0, 280) : null,
             timestamp: msg.received_at || msg.timestamp,
             time_waiting: msg.received_at || msg.timestamp,
             is_read: msg.replied,
@@ -1223,39 +1226,52 @@ export default function InboxPage() {
           </div>
           <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
             {items.map((item) => (
-              <div key={item.id} className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 transition-colors">
+              <Link
+                key={item.id}
+                href={`/conversations/${item.conversation_id}`}
+                className="flex items-start gap-4 px-4 py-3 hover:bg-gray-50 transition-colors group"
+              >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900 truncate">
+                    <span className="text-sm font-medium text-gray-900 truncate group-hover:text-teal-700">
                       {item.sender_name || 'Unknown'}
                     </span>
                     <span className="text-xs text-gray-400">
                       {item.channel}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-600 truncate mt-0.5">
+                  <p className="text-sm text-gray-800 font-medium truncate mt-0.5">
                     {item.subject_or_preview || '(no subject)'}
                   </p>
+                  {item.body_preview && (
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
+                      {item.body_preview}
+                    </p>
+                  )}
                   {item.spam_reason && (
-                    <div className="flex items-center gap-1.5 mt-1">
+                    <div className="flex items-center gap-1.5 mt-1.5">
                       <ShieldAlert className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
                       <span className="text-xs text-orange-600">{item.spam_reason}</span>
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0 pt-0.5">
                   <span className="text-xs text-gray-400 whitespace-nowrap">
                     {getRelativeTime(item.time_waiting)}
                   </span>
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => handleMarkNotSpam(item.message_id)}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleMarkNotSpam(item.message_id)
+                    }}
                   >
                     Not Spam
                   </Button>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

@@ -245,6 +245,7 @@ export interface InboxItem {
   account_name: string
   account_id: string
   subject_or_preview: string
+  body_preview?: string | null
   category: Category | null
   sentiment: Sentiment | null
   urgency: Urgency | null
