@@ -49,7 +49,9 @@ export default function AISettingsPage() {
   const [confidenceThreshold, setConfidenceThreshold] = useState(80)
   const [trustThreshold, setTrustThreshold] = useState(5)
   const [fallbackBehavior, setFallbackBehavior] = useState('escalate')
-  const [autoResolveMarketing, setAutoResolveMarketing] = useState(true)
+  // Default to false to mirror the DB column default. The active row may be
+  // overridden via the toggle below; loadData will hydrate the actual value.
+  const [autoResolveMarketing, setAutoResolveMarketing] = useState(false)
 
   const [prompts, setPrompts] = useState({
     email: `You are a professional customer support agent for a telecommunications company. Respond to this email in a formal, courteous tone. Address the customer by name. Include relevant account details and next steps. Sign off with "Best regards, Customer Support Team".`,

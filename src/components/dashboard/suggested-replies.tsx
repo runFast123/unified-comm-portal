@@ -16,20 +16,28 @@ export function SuggestedReplies({ conversationId, latestMessage, category }: Su
   const [loaded, setLoaded] = useState(false)
   const [inserted, setInserted] = useState<string | null>(null)
 
+  // Helper that uses React's native value setter so a controlled component's
+  // onChange fires. Assigning textarea.value = text directly primes React's
+  // internal value tracker, after which the change event would be skipped,
+  // leaving manualText empty (the original bug we just fixed).
+  const setReactValue = (el: HTMLTextAreaElement, text: string): boolean => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+    if (!setter) {
+      // Should never happen in any modern browser. If it does, log loudly so
+      // we don't silently fall back to the broken direct-assignment path.
+      console.error('[SuggestedReplies] HTMLTextAreaElement.prototype value setter unavailable; cannot insert text without breaking React state.')
+      return false
+    }
+    setter.call(el, text)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  }
+
   const handleInsert = (text: string) => {
     // Find the manual reply textarea and insert text directly
     const textarea = document.querySelector('textarea[placeholder*="Type your reply"]') as HTMLTextAreaElement | null
     if (textarea) {
-      // Use React's native value setter so the controlled component's onChange fires
-      // (assigning .value directly first would prime React's value tracker and cause
-      // the subsequent change event to be skipped, leaving manualText empty)
-      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
-      if (nativeSetter) {
-        nativeSetter.call(textarea, text)
-      } else {
-        textarea.value = text
-      }
-      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+      if (!setReactValue(textarea, text)) return
       textarea.focus()
       setInserted(text)
       setTimeout(() => setInserted(null), 2000)
@@ -43,14 +51,7 @@ export function SuggestedReplies({ conversationId, latestMessage, category }: Su
           // Wait for textarea to appear, then insert
           setTimeout(() => {
             const ta = document.querySelector('textarea[placeholder*="Type your reply"]') as HTMLTextAreaElement | null
-            if (ta) {
-              const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
-              if (setter) {
-                setter.call(ta, text)
-              } else {
-                ta.value = text
-              }
-              ta.dispatchEvent(new Event('input', { bubbles: true }))
+            if (ta && setReactValue(ta, text)) {
               ta.focus()
             }
           }, 300)

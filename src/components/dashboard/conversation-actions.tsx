@@ -569,9 +569,10 @@ export function ConversationActions({
         toast.warning(`Message saved locally but delivery failed${errMsg}. Click Send Reply again to retry.`)
       }
       router.refresh()
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Network error — also keep the draft so the agent can retry
-      toast.error(`Failed: ${err.message}. Your draft is kept; click Send Reply to retry.`)
+      const msg = err instanceof Error ? err.message : 'unknown error'
+      toast.error(`Failed: ${msg}. Your draft is kept; click Send Reply to retry.`)
     } finally {
       setLoading(null)
     }

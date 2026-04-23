@@ -130,22 +130,36 @@ export async function findOrCreateConversation(
 
   if (error || !newConv) {
     // Race-condition safety: if a parallel webhook just created the same
-    // conversation (unique index on account_id+teams_chat_id for Teams),
-    // re-run the lookup and return whichever row won.
+    // conversation, re-run the lookup and return whichever row won.
     // Postgres unique-violation code is 23505.
+    //
+    // Currently only the `teams` channel has a unique partial index
+    // (`conversations_teams_unique_chat` on account_id + teams_chat_id).
+    // If you add similar unique indexes for email or whatsapp, list the
+    // matching lookup key in CHANNEL_UNIQUE_KEY below and the recovery will
+    // automatically extend to those channels.
     const isUniqueViolation =
       (error as { code?: string } | null)?.code === '23505' ||
       /duplicate key|unique constraint/i.test(error?.message || '')
-    if (isUniqueViolation && params.channel === 'teams' && params.teams_chat_id) {
-      const { data: raceWinner } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('account_id', params.account_id)
-        .eq('channel', 'teams')
-        .eq('teams_chat_id', params.teams_chat_id)
-        .limit(1)
-        .maybeSingle()
-      if (raceWinner) return raceWinner.id
+    if (isUniqueViolation) {
+      type UniqueKey = { col: 'teams_chat_id' | 'email_thread_id' | 'participant_phone'; value: string | null | undefined }
+      const CHANNEL_UNIQUE_KEY: Record<typeof params.channel, UniqueKey | null> = {
+        teams: { col: 'teams_chat_id', value: params.teams_chat_id },
+        email: null, // no unique index yet — add to this map when introduced
+        whatsapp: null,
+      }
+      const key = CHANNEL_UNIQUE_KEY[params.channel]
+      if (key && key.value) {
+        const { data: raceWinner } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('account_id', params.account_id)
+          .eq('channel', params.channel)
+          .eq(key.col, key.value)
+          .limit(1)
+          .maybeSingle()
+        if (raceWinner) return raceWinner.id
+      }
     }
     throw new Error(`Failed to create conversation: ${error?.message}`)
   }

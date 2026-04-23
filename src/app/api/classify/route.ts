@@ -15,6 +15,38 @@ const DEFAULT_CLASSIFICATION_PROMPT = `You are a customer message classifier for
 
 Return ONLY the JSON object, no markdown formatting or additional text.`
 
+// ─── auto_resolve_marketing toggle cache ──────────────────────────────
+// Newsletters re-classify often; reading the toggle from DB on every call
+// adds an unnecessary round-trip. Cache the boolean for 60s — long enough to
+// matter under load, short enough that toggling in the admin UI takes effect
+// quickly. Module-level state is per-Lambda instance which is fine: cold
+// starts re-read from DB.
+let autoResolveMarketingCache: { value: boolean; expiresAt: number } | null = null
+const AUTO_RESOLVE_TTL_MS = 60_000
+
+async function isAutoResolveMarketingEnabled(
+  supabase: Awaited<ReturnType<typeof createServiceRoleClient>>
+): Promise<boolean> {
+  const now = Date.now()
+  if (autoResolveMarketingCache && autoResolveMarketingCache.expiresAt > now) {
+    return autoResolveMarketingCache.value
+  }
+  try {
+    const { data } = await supabase
+      .from('ai_config')
+      .select('auto_resolve_marketing')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const value = !!data?.auto_resolve_marketing
+    autoResolveMarketingCache = { value, expiresAt: now + AUTO_RESOLVE_TTL_MS }
+    return value
+  } catch {
+    return false // fail closed: don't auto-resolve on DB error
+  }
+}
+
 export async function POST(request: Request) {
   try {
     // Allow internal calls (from webhook handlers) via webhook secret, or authenticated users
@@ -235,17 +267,8 @@ export async function POST(request: Request) {
 
       // If ai_config.auto_resolve_marketing is enabled, also resolve the
       // conversation so it drops out of the active inbox entirely.
-      // deploy-marker: v2 — eca7c44 follow-up
       try {
-        const { data: cfg } = await supabase
-          .from('ai_config')
-          .select('auto_resolve_marketing')
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (cfg?.auto_resolve_marketing && routingConversationId) {
+        if (routingConversationId && (await isAutoResolveMarketingEnabled(supabase))) {
           await supabase
             .from('conversations')
             .update({ status: 'resolved' })

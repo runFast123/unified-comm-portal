@@ -487,6 +487,213 @@ export default function InboxPage() {
     })
   }, [items, filters, myConversationsOnly, currentUserId])
 
+  // ─── Bulk-action handlers ────────────────────────────────────────────
+  // Each handler runs one bulk operation. Where applicable we use .select()
+  // so we can compare the count of rows actually updated to the count we
+  // asked for, and surface a partial-success warning instead of silently
+  // claiming "all succeeded" (e.g., when RLS blocks some rows).
+
+  const selectedMessageIds = useCallback(() => (
+    Array.from(new Set(
+      filteredItems
+        .filter((item) => selectedIds.has(item.id))
+        .map((item) => item.message_id)
+        .filter(Boolean)
+    ))
+  ), [filteredItems, selectedIds])
+
+  const selectedConversationIds = useCallback(() => (
+    Array.from(new Set(
+      filteredItems
+        .filter((item) => selectedIds.has(item.id))
+        .map((item) => item.conversation_id)
+        .filter(Boolean)
+    ))
+  ), [filteredItems, selectedIds])
+
+  const reportPartial = useCallback((requested: number, actual: number, verb: string) => {
+    if (actual === 0) {
+      toast.error(`Failed to ${verb} (0 of ${requested} rows updated — likely permission/RLS).`)
+    } else if (actual < requested) {
+      toast.warning(`${verb.charAt(0).toUpperCase() + verb.slice(1)}d ${actual} of ${requested} (some rows could not be updated).`)
+    } else {
+      toast.success(`${verb.charAt(0).toUpperCase() + verb.slice(1)}d ${actual}.`)
+    }
+  }, [toast])
+
+  const handleApproveSelected = useCallback(async () => {
+    const supabase = createClient()
+    const idsToApprove = filteredItems
+      .filter((item) => selectedIds.has(item.id) && item.ai_status === 'draft_ready')
+      .map((item) => item.message_id)
+    if (idsToApprove.length === 0) {
+      toast.warning('None of the selected messages have approvable drafts.')
+      return
+    }
+    const { data, error } = await supabase
+      .from('ai_replies')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+      .in('message_id', idsToApprove)
+      .in('status', ['pending_approval', 'edited'])
+      .select('id')
+    if (error) {
+      toast.error('Failed to approve: ' + error.message)
+      return
+    }
+    reportPartial(idsToApprove.length, data?.length ?? 0, 'approve')
+    if ((data?.length ?? 0) > 0) {
+      clearSelection()
+      fetchInboxItems()
+    }
+  }, [filteredItems, selectedIds, toast, clearSelection, fetchInboxItems, reportPartial])
+
+  const handleSmartApprove = useCallback(async () => {
+    const supabase = createClient()
+    const highConfidenceIds = filteredItems
+      .filter((item) => item.ai_status === 'draft_ready' && (item.ai_confidence ?? 0) > 85)
+      .map((item) => item.message_id)
+    const { data, error } = await supabase
+      .from('ai_replies')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+      .in('message_id', highConfidenceIds)
+      .in('status', ['pending_approval', 'edited'])
+      .select('id')
+    if (error) {
+      toast.error('Failed to approve: ' + error.message)
+      return
+    }
+    reportPartial(highConfidenceIds.length, data?.length ?? 0, 'approve')
+    if ((data?.length ?? 0) > 0) fetchInboxItems()
+  }, [filteredItems, toast, fetchInboxItems, reportPartial])
+
+  const handleMarkRepliedBulk = useCallback(async () => {
+    const supabase = createClient()
+    const messageIds = selectedIds.size > 0
+      ? selectedMessageIds()
+      : filteredItems.filter((item) => item.ai_status !== 'auto_sent').map((item) => item.message_id)
+    if (messageIds.length === 0) {
+      toast.warning('Nothing to mark.')
+      return
+    }
+    const { data, error } = await supabase
+      .from('messages')
+      .update({ replied: true, reply_required: false })
+      .in('id', messageIds)
+      .select('id')
+    if (error) {
+      toast.error('Failed to mark as replied: ' + error.message)
+      return
+    }
+    const updatedIds = new Set((data ?? []).map((r: { id: string }) => r.id))
+    reportPartial(messageIds.length, updatedIds.size, 'mark replied')
+    if (updatedIds.size > 0) {
+      setItems((prev) => prev.filter((item) => !updatedIds.has(item.message_id)))
+      clearSelection()
+    }
+  }, [filteredItems, selectedIds, selectedMessageIds, toast, clearSelection, reportPartial])
+
+  const handleResolveBulk = useCallback(async () => {
+    const supabase = createClient()
+    const convIds = selectedConversationIds()
+    if (convIds.length === 0) {
+      toast.warning('Nothing to resolve.')
+      return
+    }
+    const { data: resolvedConvs, error: convErr } = await supabase
+      .from('conversations')
+      .update({ status: 'resolved' })
+      .in('id', convIds)
+      .select('id')
+    if (convErr) {
+      toast.error('Failed to resolve: ' + convErr.message)
+      return
+    }
+    const resolvedSet = new Set((resolvedConvs ?? []).map((r: { id: string }) => r.id))
+    if (resolvedSet.size === 0) {
+      toast.error(`Failed to resolve (0 of ${convIds.length} conversations updated — likely permission/RLS).`)
+      return
+    }
+    // Mark messages replied for the conversations that actually got resolved
+    const msgIds = filteredItems
+      .filter((item) => selectedIds.has(item.id) && resolvedSet.has(item.conversation_id))
+      .map((item) => item.message_id)
+    if (msgIds.length > 0) {
+      await supabase
+        .from('messages')
+        .update({ replied: true, reply_required: false })
+        .in('id', msgIds)
+      setItems((prev) => prev.filter((item) => !msgIds.includes(item.message_id)))
+    }
+    if (resolvedSet.size < convIds.length) {
+      toast.warning(`Resolved ${resolvedSet.size} of ${convIds.length} conversation(s).`)
+    } else {
+      toast.success(`Resolved ${resolvedSet.size} conversation(s).`)
+    }
+    clearSelection()
+  }, [filteredItems, selectedIds, selectedConversationIds, toast, clearSelection])
+
+  const handleAssignMeBulk = useCallback(async () => {
+    if (!currentUserId) {
+      toast.error('Not signed in.')
+      return
+    }
+    const supabase = createClient()
+    const convIds = selectedConversationIds()
+    if (convIds.length === 0) {
+      toast.warning('Nothing to assign.')
+      return
+    }
+    const { data, error } = await supabase
+      .from('conversations')
+      .update({ assigned_to: currentUserId })
+      .in('id', convIds)
+      .select('id')
+    if (error) {
+      toast.error('Failed to assign: ' + error.message)
+      return
+    }
+    reportPartial(convIds.length, data?.length ?? 0, 'assign')
+    if ((data?.length ?? 0) > 0) {
+      clearSelection()
+      fetchInboxItems()
+    }
+  }, [currentUserId, selectedConversationIds, toast, clearSelection, fetchInboxItems, reportPartial])
+
+  const handleArchiveBulk = useCallback(async () => {
+    const supabase = createClient()
+    const messageIds = selectedIds.size > 0
+      ? selectedMessageIds()
+      : filteredItems.map((item) => item.message_id)
+    if (messageIds.length === 0) {
+      toast.warning('Nothing to archive.')
+      return
+    }
+    // When archiving spam/newsletter messages, also clear is_spam so they don't reappear
+    const updateFields = inboxView !== 'inbox'
+      ? { replied: true, reply_required: false, is_spam: false }
+      : { replied: true, reply_required: false }
+    const { data, error } = await supabase
+      .from('messages')
+      .update(updateFields)
+      .in('id', messageIds)
+      .select('id')
+    if (error) {
+      toast.error('Failed to archive: ' + error.message)
+      return
+    }
+    const updatedIds = new Set((data ?? []).map((r: { id: string }) => r.id))
+    reportPartial(messageIds.length, updatedIds.size, 'archive')
+    if (updatedIds.size > 0) {
+      setItems((prev) => prev.filter((item) => !updatedIds.has(item.message_id)))
+      if (inboxView === 'newsletter') {
+        setNewsletterCount((prev) => Math.max(0, prev - updatedIds.size))
+      } else if (inboxView === 'spam') {
+        setSpamCount((prev) => Math.max(0, prev - updatedIds.size))
+      }
+      clearSelection()
+    }
+  }, [filteredItems, selectedIds, selectedMessageIds, inboxView, toast, clearSelection, reportPartial])
+
   const handleMarkNotSpam = useCallback(async (messageId: string) => {
     const supabase = createClient()
     const { error: err } = await supabase
@@ -818,145 +1025,14 @@ export default function InboxPage() {
                 loading={bulkActionLoading}
                 onClick={async () => {
                   setBulkActionLoading(true)
-                  const supabase = createClient()
-
                   try {
-                    if (confirmAction.type === 'smart-approve') {
-                      const highConfidenceIds = filteredItems
-                        .filter((item) => item.ai_status === 'draft_ready' && (item.ai_confidence ?? 0) > 85)
-                        .map((item) => item.message_id)
-                      const { error: err } = await supabase
-                        .from('ai_replies')
-                        .update({ status: 'approved', reviewed_at: new Date().toISOString() })
-                        .in('message_id', highConfidenceIds)
-                        .in('status', ['pending_approval', 'edited'])
-                      if (err) {
-                        toast.error('Failed to approve: ' + err.message)
-                      } else {
-                        toast.success(`Approved ${highConfidenceIds.length} high-confidence draft(s).`)
-                        fetchInboxItems()
-                      }
-                    } else if (confirmAction.type === 'approve') {
-                      const idsToApprove = filteredItems
-                        .filter((item) => selectedIds.has(item.id) && item.ai_status === 'draft_ready')
-                        .map((item) => item.message_id)
-                      if (idsToApprove.length === 0) {
-                        toast.warning('None of the selected messages have approvable drafts.')
-                      } else {
-                        const { error: err } = await supabase
-                          .from('ai_replies')
-                          .update({ status: 'approved', reviewed_at: new Date().toISOString() })
-                          .in('message_id', idsToApprove)
-                          .in('status', ['pending_approval', 'edited'])
-                        if (err) {
-                          toast.error('Failed to approve: ' + err.message)
-                        } else {
-                          toast.success(`Approved ${idsToApprove.length} draft(s).`)
-                          clearSelection()
-                          fetchInboxItems()
-                        }
-                      }
-                    } else if (confirmAction.type === 'mark_replied') {
-                      const messageIds = selectedIds.size > 0
-                        ? filteredItems.filter((item) => selectedIds.has(item.id)).map((item) => item.message_id)
-                        : filteredItems.filter((item) => item.ai_status !== 'auto_sent').map((item) => item.message_id)
-                      const { error: err } = await supabase
-                        .from('messages')
-                        .update({ replied: true, reply_required: false })
-                        .in('id', messageIds)
-                      if (err) {
-                        toast.error('Failed to mark as replied: ' + err.message)
-                      } else {
-                        setItems((prev) =>
-                          prev.filter((item) => !messageIds.includes(item.message_id))
-                        )
-                        toast.success(`Marked ${messageIds.length} message(s) as replied.`)
-                        clearSelection()
-                      }
-                    } else if (confirmAction.type === 'resolve') {
-                      // Mark conversations as resolved for all selected items
-                      const convIds = Array.from(new Set(
-                        filteredItems
-                          .filter((item) => selectedIds.has(item.id))
-                          .map((item) => item.conversation_id)
-                          .filter(Boolean)
-                      ))
-                      if (convIds.length === 0) {
-                        toast.warning('Nothing to resolve.')
-                      } else {
-                        const { error: err } = await supabase
-                          .from('conversations')
-                          .update({ status: 'resolved' })
-                          .in('id', convIds)
-                        if (err) {
-                          toast.error('Failed to resolve: ' + err.message)
-                        } else {
-                          // Also mark messages replied so they don't still count as pending
-                          const msgIds = filteredItems
-                            .filter((item) => selectedIds.has(item.id))
-                            .map((item) => item.message_id)
-                          await supabase
-                            .from('messages')
-                            .update({ replied: true, reply_required: false })
-                            .in('id', msgIds)
-                          setItems((prev) => prev.filter((item) => !msgIds.includes(item.message_id)))
-                          toast.success(`Resolved ${convIds.length} conversation(s).`)
-                          clearSelection()
-                        }
-                      }
-                    } else if (confirmAction.type === 'assign_me') {
-                      if (!currentUserId) {
-                        toast.error('Not signed in.')
-                      } else {
-                        const convIds = Array.from(new Set(
-                          filteredItems
-                            .filter((item) => selectedIds.has(item.id))
-                            .map((item) => item.conversation_id)
-                            .filter(Boolean)
-                        ))
-                        if (convIds.length === 0) {
-                          toast.warning('Nothing to assign.')
-                        } else {
-                          const { error: err } = await supabase
-                            .from('conversations')
-                            .update({ assigned_to: currentUserId })
-                            .in('id', convIds)
-                          if (err) {
-                            toast.error('Failed to assign: ' + err.message)
-                          } else {
-                            toast.success(`Assigned ${convIds.length} conversation(s) to you.`)
-                            clearSelection()
-                            fetchInboxItems()
-                          }
-                        }
-                      }
-                    } else if (confirmAction.type === 'archive') {
-                      const messageIds = selectedIds.size > 0
-                        ? filteredItems.filter((item) => selectedIds.has(item.id)).map((item) => item.message_id)
-                        : filteredItems.map((item) => item.message_id)
-                      // When archiving spam/newsletter messages, also clear is_spam so they don't reappear
-                      const updateFields = inboxView !== 'inbox'
-                        ? { replied: true, reply_required: false, is_spam: false }
-                        : { replied: true, reply_required: false }
-                      const { error: err } = await supabase
-                        .from('messages')
-                        .update(updateFields)
-                        .in('id', messageIds)
-                      if (err) {
-                        toast.error('Failed to archive: ' + err.message)
-                      } else {
-                        setItems((prev) =>
-                          prev.filter((item) => !messageIds.includes(item.message_id))
-                        )
-                        // Also update count badges when archiving spam/newsletter
-                        if (inboxView === 'newsletter') {
-                          setNewsletterCount((prev) => Math.max(0, prev - messageIds.length))
-                        } else if (inboxView === 'spam') {
-                          setSpamCount((prev) => Math.max(0, prev - messageIds.length))
-                        }
-                        toast.success(`Archived ${messageIds.length} message(s).`)
-                        clearSelection()
-                      }
+                    switch (confirmAction.type) {
+                      case 'smart-approve':  await handleSmartApprove(); break
+                      case 'approve':        await handleApproveSelected(); break
+                      case 'mark_replied':   await handleMarkRepliedBulk(); break
+                      case 'resolve':        await handleResolveBulk(); break
+                      case 'assign_me':      await handleAssignMeBulk(); break
+                      case 'archive':        await handleArchiveBulk(); break
                     }
                   } finally {
                     setBulkActionLoading(false)
@@ -1037,7 +1113,6 @@ export default function InboxPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="hidden sm:inline-flex"
               onClick={() => {
                 if (!currentUserId) {
                   toast.error('Not signed in.')
@@ -1047,7 +1122,8 @@ export default function InboxPage() {
               }}
             >
               <UserPlus className="h-4 w-4" />
-              Assign to me
+              <span className="hidden sm:inline">Assign to me</span>
+              <span className="sm:hidden">Assign</span>
             </Button>
             <button
               onClick={clearSelection}
