@@ -184,6 +184,51 @@ function parseSender(sender: string | null): { name: string; email: string } {
   return { name: sender, email: sender }
 }
 
+/**
+ * Inline formatting for a line of email body text.
+ * Handles the common conventions found in plain-text emails:
+ *   - **bold** and *bold*  → <strong>
+ *   - _italic_             → <em>
+ *   - http(s) URLs         → <a target="_blank">
+ *   - email addresses      → <a href="mailto:">
+ *
+ * Done with a single tokenizer (not regex.replace on JSX) so nested patterns
+ * cannot collide and the React keys stay stable.
+ */
+function inlineFormat(line: string, keyPrefix: string): React.ReactNode {
+  if (!line) return null
+  // Combined regex: URLs OR email addresses OR **bold** OR *bold* OR _italic_
+  // Order matters — URL before bold so we don't think "*://*" is a bold span.
+  const TOKEN = /(https?:\/\/[^\s<>"]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\*\*[^*\n]+\*\*|\*[^*\n]+\*|_[^_\n]+_)/g
+  const out: React.ReactNode[] = []
+  let lastIndex = 0
+  let m: RegExpExecArray | null
+  let i = 0
+  while ((m = TOKEN.exec(line)) !== null) {
+    if (m.index > lastIndex) {
+      out.push(line.slice(lastIndex, m.index))
+    }
+    const tok = m[0]
+    const k = `${keyPrefix}-${i++}`
+    if (tok.startsWith('http')) {
+      out.push(<a key={k} href={tok} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline break-all">{tok}</a>)
+    } else if (tok.includes('@') && !tok.startsWith('*') && !tok.startsWith('_')) {
+      out.push(<a key={k} href={`mailto:${tok}`} className="text-teal-600 hover:underline">{tok}</a>)
+    } else if (tok.startsWith('**') && tok.endsWith('**')) {
+      out.push(<strong key={k} className="font-semibold text-gray-900">{tok.slice(2, -2)}</strong>)
+    } else if (tok.startsWith('*') && tok.endsWith('*')) {
+      out.push(<strong key={k} className="font-semibold text-gray-900">{tok.slice(1, -1).trim()}</strong>)
+    } else if (tok.startsWith('_') && tok.endsWith('_')) {
+      out.push(<em key={k}>{tok.slice(1, -1)}</em>)
+    } else {
+      out.push(tok)
+    }
+    lastIndex = m.index + tok.length
+  }
+  if (lastIndex < line.length) out.push(line.slice(lastIndex))
+  return out.length > 0 ? out : line
+}
+
 /** Format email body - clean up quoted text, signatures, and formatting */
 function formatEmailBody(text: string | null): React.ReactNode {
   if (!text) return <span className="text-gray-500 italic">No content</span>
@@ -221,14 +266,19 @@ function formatEmailBody(text: string | null): React.ReactNode {
     const line = bodyParts[i]
     const formMatch = line.match(formPattern)
 
-    if (formMatch && i + 1 < bodyParts.length && !bodyParts[i + 1].match(formPattern)) {
-      // This is a label followed by a value
+    // Form-label/value detection: only treat *Label* as a form label when the
+    // NEXT line is a plain value (no asterisks, has a colon or short text).
+    // This prevents signature blocks where many consecutive lines are wrapped
+    // in asterisks from being misread as labels.
+    const nextLine = bodyParts[i + 1]
+    const looksLikeFormValue = nextLine && !nextLine.match(formPattern) && nextLine.trim().length > 0 && nextLine.length < 200
+    if (formMatch && looksLikeFormValue) {
       formattedParts.push(
         <div key={i} className="flex flex-col sm:flex-row sm:gap-2 py-1">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[140px]">
             {formMatch[1].replace(/\(Optional\)/i, '').trim()}
           </span>
-          <span className="text-sm text-gray-900 font-medium">{bodyParts[i + 1]}</span>
+          <span className="text-sm text-gray-900 font-medium">{inlineFormat(nextLine, `fv-${i}`)}</span>
         </div>
       )
       i += 2
@@ -246,7 +296,7 @@ function formatEmailBody(text: string | null): React.ReactNode {
       const isSignature = line.startsWith('Sent from') || line.startsWith('This message was sent from')
       formattedParts.push(
         <p key={i} className={cn('text-sm leading-relaxed', isSignature ? 'text-gray-400 italic text-xs mt-2' : 'text-gray-800')}>
-          {line}
+          {inlineFormat(line, `l-${i}`)}
         </p>
       )
     } else if (formattedParts.length > 0) {
@@ -400,7 +450,9 @@ function TeamsBubble({ message, isOutbound }: { message: Message; isOutbound: bo
               : 'bg-white border border-gray-200'
           )}
         >
-          <p className="text-sm leading-relaxed whitespace-pre-wrap text-gray-900">{message.message_text}</p>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap text-gray-900">
+            {inlineFormat(message.message_text || '', `tm-${message.id}`)}
+          </p>
           {message.attachments && renderAttachments(message.attachments)}
         </div>
       </div>
@@ -427,7 +479,7 @@ function WhatsAppBubble({ message, isOutbound }: { message: Message; isOutbound:
         )}
       >
         <p className="text-sm leading-relaxed text-gray-900 whitespace-pre-wrap">
-          {message.message_text}
+          {inlineFormat(message.message_text || '', `wa-${message.id}`)}
         </p>
         {message.attachments && renderAttachments(message.attachments)}
         <div className="mt-1 flex items-center justify-end gap-1.5">
