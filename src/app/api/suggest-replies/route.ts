@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
 import { callAI } from '@/lib/api-helpers'
 import { AIBudgetExceededError } from '@/lib/ai-usage'
+import { CircuitBreakerOpenError } from '@/lib/ai-circuit-breaker'
 
 export async function POST(request: Request) {
   try {
@@ -53,6 +54,20 @@ Example output: ["Thank you for reaching out. I'll look into this right away.", 
           error: 'AI budget exceeded for this account',
           monthly_total_usd: err.monthly_total_usd,
           budget_usd: err.budget_usd,
+        })
+      }
+      if (err instanceof CircuitBreakerOpenError) {
+        // Provider is unavailable — fall back to the same canned suggestions
+        // so the agent UI never goes empty.
+        return NextResponse.json({
+          ai_suggestions: [
+            'Thank you for reaching out. How can I help you?',
+            "I'll look into this and get back to you shortly.",
+            'Could you provide more details so I can assist you better?',
+          ],
+          templates: [],
+          skipped: true,
+          reason: 'ai_provider_unavailable',
         })
       }
       throw err

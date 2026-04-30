@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
 import { callAI, verifyAccountAccess, checkRateLimit } from '@/lib/api-helpers'
 import { AIBudgetExceededError } from '@/lib/ai-usage'
+import { CircuitBreakerOpenError } from '@/lib/ai-circuit-breaker'
 import { logError } from '@/lib/logger'
 
 const SYSTEM_PROMPT =
@@ -135,6 +136,14 @@ export async function POST(request: Request) {
       // Graceful skip — the UI never shows ghost text and stops asking.
       return NextResponse.json(
         { suggestion: null, skipped: true, error: 'AI budget exceeded for this account' },
+        { status: 200 }
+      )
+    }
+    if (err instanceof CircuitBreakerOpenError) {
+      // Provider is unavailable — quietly skip; the UI silently drops the
+      // suggestion. The breaker auto-recovers via half-open canary.
+      return NextResponse.json(
+        { suggestion: null, skipped: true, reason: 'ai_provider_unavailable' },
         { status: 200 }
       )
     }

@@ -3,16 +3,20 @@ import { createServiceRoleClient } from '@/lib/supabase-server'
 import { checkRateLimit as checkRateLimitDb } from '@/lib/rate-limiter'
 import { findOrCreateContact } from '@/lib/contacts'
 import { logError } from '@/lib/logger'
+import { recordMetric } from '@/lib/metrics'
 import {
   assertWithinBudget,
   recordAIUsage,
   approxTokensFromText,
   type AIEndpoint,
 } from '@/lib/ai-usage'
+import { withCircuitBreaker, CircuitBreakerOpenError as _CircuitBreakerOpenError } from '@/lib/ai-circuit-breaker'
 import type { Account } from '@/types/database'
 
 // Re-export so callers can `import { AIBudgetExceededError } from '@/lib/api-helpers'`
 export { AIBudgetExceededError } from '@/lib/ai-usage'
+// Re-export so callers can `import { CircuitBreakerOpenError } from '@/lib/api-helpers'`
+export { CircuitBreakerOpenError } from '@/lib/ai-circuit-breaker'
 
 // ─── Rate Limiter ───────────────────────────────────────────────────
 //
@@ -307,39 +311,58 @@ export async function callAI(
 
   const config = await getAIConfig()
   let lastError: Error | null = null
+  // Metrics envelope around the retry loop. We measure END-TO-END duration
+  // (including retries + backoff sleeps) so the operational dashboard reflects
+  // user-perceived latency, not raw upstream RTT. The model + endpoint labels
+  // line up with `ai_usage` for cross-referencing operational vs cost views.
+  const aiCallStartedAt = Date.now()
+  const metricLabels = {
+    endpoint: ctx.endpoint ?? 'classify',
+    model: config.model,
+  }
 
   for (let attempt = 0; attempt <= AI_MAX_RETRIES; attempt++) {
     try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS)
+      // Wrap the upstream fetch in the circuit breaker — short-circuits with
+      // CircuitBreakerOpenError when NVIDIA has been failing repeatedly.
+      // The breaker classifies failures internally (network/5xx/timeouts =
+      // failures; 4xx bad-request and AIBudgetExceededError are not).
+      const { content, data } = await withCircuitBreaker(async () => {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS)
 
-      const response = await fetch(`${config.base_url}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.api_key}`,
-        },
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage },
-          ],
-          temperature: config.temperature,
-          max_tokens: config.max_tokens,
-        }),
-        signal: controller.signal,
+        let response: Response
+        try {
+          response = await fetch(`${config.base_url}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${config.api_key}`,
+            },
+            body: JSON.stringify({
+              model: config.model,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMessage },
+              ],
+              temperature: config.temperature,
+              max_tokens: config.max_tokens,
+            }),
+            signal: controller.signal,
+          })
+        } finally {
+          clearTimeout(timeoutId)
+        }
+
+        if (!response.ok) {
+          const errorBody = await response.text()
+          throw new Error(`AI API error (${response.status}): ${errorBody.substring(0, 200)}`)
+        }
+
+        const data = await response.json()
+        const content = data.choices?.[0]?.message?.content || ''
+        return { content, data }
       })
-
-      clearTimeout(timeoutId)
-
-      if (!response.ok) {
-        const errorBody = await response.text()
-        throw new Error(`AI API error (${response.status}): ${errorBody.substring(0, 200)}`)
-      }
-
-      const data = await response.json()
-      const content = data.choices?.[0]?.message?.content || ''
 
       // ── Usage recording (AFTER successful AI call) ─────────────────
       // Best-effort — recordAIUsage swallows DB errors internally.
@@ -370,9 +393,28 @@ export async function callAI(
         }
       }
 
+      recordMetric(
+        'ai.call_duration_ms',
+        Date.now() - aiCallStartedAt,
+        { ...metricLabels, success: true, attempts: attempt + 1 },
+        ctx.request_id ?? null
+      )
       return content
     } catch (err: any) {
       lastError = err
+      // Breaker tripped — don't retry, don't wait, just bubble up. The
+      // breaker has already decided the upstream is dead; piling on with
+      // backoff sleeps in this loop would just delay the graceful skip.
+      if (err instanceof _CircuitBreakerOpenError) {
+        recordMetric(
+          'ai.call_duration_ms',
+          Date.now() - aiCallStartedAt,
+          { ...metricLabels, success: false, reason: 'circuit_open' },
+          ctx.request_id ?? null
+        )
+        recordMetric('ai.call_errors', 1, { ...metricLabels, reason: 'circuit_open' }, ctx.request_id ?? null)
+        throw err
+      }
       const isTimeout = err.name === 'AbortError'
       const isRetryable = isTimeout || (err.message && /\b5\d{2}\b/.test(err.message))
 
@@ -385,6 +427,13 @@ export async function callAI(
     }
   }
 
+  recordMetric(
+    'ai.call_duration_ms',
+    Date.now() - aiCallStartedAt,
+    { ...metricLabels, success: false, reason: 'exhausted_retries' },
+    ctx.request_id ?? null
+  )
+  recordMetric('ai.call_errors', 1, { ...metricLabels, reason: 'exhausted_retries' }, ctx.request_id ?? null)
   throw lastError || new Error('AI call failed after all retries')
 }
 

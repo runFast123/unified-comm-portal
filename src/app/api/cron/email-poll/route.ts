@@ -3,6 +3,7 @@ import { pollAllEmailAccounts } from '@/lib/email-poller'
 import { validateWebhookSecret } from '@/lib/api-helpers'
 import { getRequestId } from '@/lib/request-id'
 import { logInfo, logError } from '@/lib/logger'
+import { recordMetric } from '@/lib/metrics'
 
 /**
  * Accept either `X-Webhook-Secret` (internal callers) or
@@ -73,21 +74,43 @@ export async function GET(request: Request) {
       }),
       { accounts: 0, fetched: 0, forwarded: 0, errors: 0 }
     )
+    const durationMs = Date.now() - startedAt
     logInfo('system', 'email_poll_end', `email cron finished`, {
       request_id: requestId,
       shard,
       total,
       ...summary,
-      duration_ms: Date.now() - startedAt,
+      duration_ms: durationMs,
     })
+
+    // ── Operational metrics ────────────────────────────────────────────
+    // Duration always recorded (success path). `success` label distinguishes
+    // these rows from the error catch's matching emit below so the dashboard
+    // can compute success-rate without joining on a separate counter.
+    recordMetric('cron.email_poll.duration_ms', durationMs, { shard, total, success: true }, requestId)
+    recordMetric('cron.email_poll.fetched', summary.fetched, { shard, total }, requestId)
+    if (summary.errors > 0) {
+      recordMetric('cron.email_poll.errors', summary.errors, { shard, total }, requestId)
+    }
+    // `webhook.email.ingested` mirrors per-message ingest count — the email
+    // ingest core itself is off-limits, so we emit the aggregate here from
+    // the cron's summary. Per-message labels (account, is_spam) are not
+    // available at this layer; the dashboard shows the count only.
+    if (summary.fetched > 0) {
+      recordMetric('webhook.email.ingested', summary.fetched, { source: 'cron', shard }, requestId)
+    }
+
     return NextResponse.json({ shard, total, summary, results, request_id: requestId })
   } catch (err) {
+    const durationMs = Date.now() - startedAt
     logError('system', 'email_poll_error', err instanceof Error ? err.message : 'unknown', {
       request_id: requestId,
       shard,
       total,
-      duration_ms: Date.now() - startedAt,
+      duration_ms: durationMs,
     })
+    recordMetric('cron.email_poll.duration_ms', durationMs, { shard, total, success: false }, requestId)
+    recordMetric('cron.email_poll.errors', 1, { shard, total, fatal: true }, requestId)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Internal error', request_id: requestId },
       { status: 500 }

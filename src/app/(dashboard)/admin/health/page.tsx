@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CopyField } from '@/components/ui/copy-field'
 import { useToast } from '@/components/ui/toast'
+import Link from 'next/link'
 import {
   RefreshCw,
   CheckCircle,
@@ -20,6 +21,8 @@ import {
   ExternalLink,
   PlayCircle,
   Inbox,
+  BarChart3,
+  ArrowRight,
 } from 'lucide-react'
 
 // ─── Shared types ──────────────────────────────────────────────────────
@@ -675,6 +678,23 @@ export default function HealthPage() {
             </div>
           </div>
         )}
+      </Card>
+
+      {/* H. Observability — pointer to the metrics SLI dashboard. Lives on a
+            separate page because it's a different rhythm of monitoring (SLIs
+            over time) vs the configuration sanity checks above. */}
+      <Card
+        title="H. Observability"
+        description="Cron success rate, ingest latency, AI spend, and per-hour message volume — sourced from the metrics_events stream."
+      >
+        <Link
+          href="/admin/observability"
+          className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100"
+        >
+          <BarChart3 className="h-4 w-4" />
+          View metrics dashboard
+          <ArrowRight className="h-4 w-4" />
+        </Link>
       </Card>
     </div>
   )

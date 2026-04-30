@@ -4,6 +4,7 @@ import { sendEmail, sendTeams, sendWhatsApp } from '@/lib/channel-sender'
 import { validateWebhookSecret } from '@/lib/api-helpers'
 import { logError, logInfo } from '@/lib/logger'
 import { getRequestId } from '@/lib/request-id'
+import { recordMetric } from '@/lib/metrics'
 
 // Per-run cap so a backlog never monopolises one invocation.
 const BATCH_LIMIT = 50
@@ -76,7 +77,10 @@ export async function GET(request: Request) {
     .limit(BATCH_LIMIT)
 
   if (error) {
+    const durationMs = Date.now() - startedAt
     logError('system', 'dispatch_scheduled_query_error', error.message, { request_id: requestId })
+    recordMetric('cron.dispatch_scheduled.duration_ms', durationMs, { success: false }, requestId)
+    recordMetric('cron.dispatch_scheduled.errors', 1, { stage: 'query', fatal: true }, requestId)
     return NextResponse.json({ error: error.message, request_id: requestId }, { status: 500 })
   }
 
@@ -427,6 +431,7 @@ export async function GET(request: Request) {
     }
   }
 
+  const durationMs = Date.now() - startedAt
   logInfo('system', 'dispatch_scheduled_end', 'dispatch-scheduled cron finished', {
     request_id: requestId,
     dispatched,
@@ -437,8 +442,21 @@ export async function GET(request: Request) {
     pending_failed: pendingFailed,
     pending_skipped: pendingSkipped,
     pending_errors_count: pendingErrors.length,
-    duration_ms: Date.now() - startedAt,
+    duration_ms: durationMs,
   })
+
+  // ── Operational metrics ────────────────────────────────────────────
+  // `fetched` here is the total number of messages we *attempted* to
+  // dispatch (scheduled + pending undo-window). Per-row failures count
+  // toward the errors counter; the cron run itself is "successful" if it
+  // completed without an unhandled exception.
+  const totalDispatched = dispatched + pendingDispatched
+  const totalFailed = failed + pendingFailed
+  recordMetric('cron.dispatch_scheduled.duration_ms', durationMs, { success: true }, requestId)
+  recordMetric('cron.dispatch_scheduled.fetched', totalDispatched, undefined, requestId)
+  if (totalFailed > 0) {
+    recordMetric('cron.dispatch_scheduled.errors', totalFailed, { stage: 'per_row' }, requestId)
+  }
 
   return NextResponse.json({
     summary: {

@@ -3,6 +3,7 @@ import { pollAllTeamsAccounts } from '@/lib/teams-poller'
 import { validateWebhookSecret } from '@/lib/api-helpers'
 import { getRequestId } from '@/lib/request-id'
 import { logInfo, logError } from '@/lib/logger'
+import { recordMetric } from '@/lib/metrics'
 
 /**
  * Accept either `X-Webhook-Secret` or `Authorization: Bearer <secret>`.
@@ -69,21 +70,35 @@ export async function GET(request: Request) {
       }),
       { accounts: 0, fetched: 0, forwarded: 0, errors: 0 }
     )
+    const durationMs = Date.now() - startedAt
     logInfo('system', 'teams_poll_end', `teams cron finished`, {
       request_id: requestId,
       shard,
       total,
       ...summary,
-      duration_ms: Date.now() - startedAt,
+      duration_ms: durationMs,
     })
+
+    // ── Operational metrics ────────────────────────────────────────────
+    // See email-poll/route.ts for the design notes — same pattern: duration
+    // (with success label), fetched, error count.
+    recordMetric('cron.teams_poll.duration_ms', durationMs, { shard, total, success: true }, requestId)
+    recordMetric('cron.teams_poll.fetched', summary.fetched, { shard, total }, requestId)
+    if (summary.errors > 0) {
+      recordMetric('cron.teams_poll.errors', summary.errors, { shard, total }, requestId)
+    }
+
     return NextResponse.json({ shard, total, summary, results, request_id: requestId })
   } catch (err) {
+    const durationMs = Date.now() - startedAt
     logError('system', 'teams_poll_error', err instanceof Error ? err.message : 'unknown', {
       request_id: requestId,
       shard,
       total,
-      duration_ms: Date.now() - startedAt,
+      duration_ms: durationMs,
     })
+    recordMetric('cron.teams_poll.duration_ms', durationMs, { shard, total, success: false }, requestId)
+    recordMetric('cron.teams_poll.errors', 1, { shard, total, fatal: true }, requestId)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Internal error', request_id: requestId },
       { status: 500 }

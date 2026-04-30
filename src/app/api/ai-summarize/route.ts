@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
 import { callAI, verifyAccountAccess } from '@/lib/api-helpers'
 import { AIBudgetExceededError } from '@/lib/ai-usage'
+import { CircuitBreakerOpenError } from '@/lib/ai-circuit-breaker'
 import { logError } from '@/lib/logger'
 
 const SYSTEM_PROMPT = `You are a customer support assistant. Summarize this conversation in 2-3 short sentences.
@@ -198,6 +199,26 @@ export async function POST(request: Request) {
           monthly_total_usd: err.monthly_total_usd,
           budget_usd: err.budget_usd,
           retry_after: 'next month',
+        },
+        { status: 200 }
+      )
+    }
+    if (err instanceof CircuitBreakerOpenError) {
+      // Provider is in a known-bad state. Return the previously cached
+      // summary if we have one — better stale than nothing — otherwise
+      // signal a soft skip so the UI can render an inert placeholder.
+      logError('ai', 'breaker_open_summarize', err.message, {
+        account_id: conversation.account_id,
+        conversation_id: conversationId,
+      })
+      return NextResponse.json(
+        {
+          summary: conversation.ai_summary ?? null,
+          cached: !!conversation.ai_summary,
+          generated_at: conversation.ai_summary_generated_at,
+          message_count: conversation.ai_summary_message_count,
+          skipped: true,
+          reason: 'ai_provider_unavailable',
         },
         { status: 200 }
       )

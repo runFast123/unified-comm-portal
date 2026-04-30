@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServiceRoleClient, createServerSupabaseClient } from '@/lib/supabase-server'
 import { callAI, getAccountSettings, checkRateLimit } from '@/lib/api-helpers'
 import { AIBudgetExceededError } from '@/lib/ai-usage'
+import { CircuitBreakerOpenError } from '@/lib/ai-circuit-breaker'
 import { logInfo, logError } from '@/lib/logger'
 import { getRequestId } from '@/lib/request-id'
 import type { Category, Sentiment, Urgency } from '@/types/database'
@@ -138,6 +139,23 @@ export async function POST(request: Request) {
             monthly_total_usd: err.monthly_total_usd,
             budget_usd: err.budget_usd,
             retry_after: 'next month',
+          },
+          { status: 200 }
+        )
+      }
+      if (err instanceof CircuitBreakerOpenError) {
+        // AI provider is in a known-bad state — short-circuit gracefully so
+        // the webhook keeps moving. Cron retries / next inbound will reopen
+        // the circuit if upstream recovers.
+        logError('ai', 'breaker_open_classify', err.message, {
+          request_id: requestId,
+          account_id,
+          message_id,
+        })
+        return NextResponse.json(
+          {
+            skipped: true,
+            reason: 'ai_provider_unavailable',
           },
           { status: 200 }
         )

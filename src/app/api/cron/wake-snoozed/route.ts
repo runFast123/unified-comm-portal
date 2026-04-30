@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase-server'
 import { validateWebhookSecret } from '@/lib/api-helpers'
 import { logError, logInfo } from '@/lib/logger'
 import { getRequestId } from '@/lib/request-id'
+import { recordMetric } from '@/lib/metrics'
 
 // Per-run cap so a long backlog never monopolises one invocation. Cron fires
 // once per minute, so we'll catch up over a few cycles even if 1000+ rows
@@ -71,9 +72,12 @@ export async function GET(request: Request) {
     .limit(BATCH_LIMIT)
 
   if (error) {
+    const durationMs = Date.now() - startedAt
     logError('system', 'wake_snoozed_query_error', error.message, {
       request_id: requestId,
     })
+    recordMetric('cron.wake_snoozed.duration_ms', durationMs, { success: false }, requestId)
+    recordMetric('cron.wake_snoozed.errors', 1, { stage: 'query', fatal: true }, requestId)
     return NextResponse.json(
       { error: error.message, request_id: requestId },
       { status: 500 }
@@ -146,13 +150,23 @@ export async function GET(request: Request) {
     }
   }
 
+  const durationMs = Date.now() - startedAt
   logInfo('system', 'wake_snoozed_end', 'wake-snoozed cron finished', {
     request_id: requestId,
     woken,
     reopened,
     failed,
-    duration_ms: Date.now() - startedAt,
+    duration_ms: durationMs,
   })
+
+  // Cron success here is "we ran without crashing" — per-row failures are
+  // tracked in the errors counter so a partial failure still counts as a
+  // successful run for SLA purposes (Vercel didn't 500).
+  recordMetric('cron.wake_snoozed.duration_ms', durationMs, { success: true }, requestId)
+  recordMetric('cron.wake_snoozed.fetched', woken, undefined, requestId)
+  if (failed > 0) {
+    recordMetric('cron.wake_snoozed.errors', failed, { stage: 'per_row' }, requestId)
+  }
 
   return NextResponse.json({
     woken,
