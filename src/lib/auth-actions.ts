@@ -42,15 +42,26 @@ export async function signUp(formData: FormData) {
     return { error: error.message }
   }
 
-  // public.users is created by the `on_auth_user_created` trigger, which also
-  // promotes the very first signup to 'admin'. We only need to set full_name here.
-  if (data.user && fullName) {
+  // Create the user record in public.users table for app-level access
+  if (data.user) {
+    const { createServiceRoleClient } = await import('@/lib/supabase-server')
     try {
-      const { createServiceRoleClient } = await import('@/lib/supabase-server')
       const serviceClient = await createServiceRoleClient()
-      await serviceClient.from('users').update({ full_name: fullName }).eq('id', data.user.id)
+      await serviceClient.from('users').upsert({
+        id: data.user.id,
+        email: data.user.email,
+        full_name: fullName,
+        role: 'viewer',
+        is_active: true,
+      }, { onConflict: 'id' })
     } catch (err) {
-      console.error('Failed to set full_name on public.users:', err)
+      // Non-critical: user can still log in without public.users row
+      // The database trigger on auth.users should also create this record
+      console.error('Failed to create public.users record:', err)
+      console.warn(
+        `User ${data.user.id} created in auth.users but public.users insert failed. ` +
+        'The database trigger should handle this, but verify the record exists.'
+      )
     }
   }
 

@@ -231,26 +231,30 @@ export function InboxPreview({ item }: InboxPreviewProps) {
     if (!quickReplyText.trim()) return
     setActionLoading('quick-reply')
     try {
+      const actionMap: Record<string, string> = { email: 'send_email_reply', teams: 'send_teams_reply', whatsapp: 'send_whatsapp_reply' }
       const supabase = createClient()
 
-      // Get conversation details for teams_chat_id + participant email
+      // Get conversation details for teams_chat_id
       const { data: conv } = await supabase
         .from('conversations')
         .select('teams_chat_id, participant_email')
         .eq('id', item.conversation_id)
         .maybeSingle()
 
-      const res = await fetch('/api/send', {
+      const res = await fetch('/api/n8n', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channel: item.channel,
+          action: actionMap[item.channel] || 'send_email_reply',
           account_id: item.account_id,
-          conversation_id: item.conversation_id,
-          reply_text: quickReplyText,
-          to: conv?.participant_email || '',
-          subject: item.subject_or_preview ? `Re: ${item.subject_or_preview.substring(0, 100)}` : 'Re: Your inquiry',
-          teams_chat_id: conv?.teams_chat_id || undefined,
+          data: {
+            to: conv?.participant_email || '',
+            subject: item.subject_or_preview ? `Re: ${item.subject_or_preview.substring(0, 100)}` : 'Re: Your inquiry',
+            body: quickReplyText,
+            reply_text: quickReplyText,
+            conversation_id: item.conversation_id,
+            teams_chat_id: conv?.teams_chat_id || undefined,
+          },
         }),
       })
 

@@ -111,6 +111,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   working_hours_end       time,
   working_timezone        varchar(50),
   is_active               boolean NOT NULL DEFAULT true,
+  make_scenario_id        varchar(100),
+  n8n_workflow_id         varchar(100),
+  teams_reply_webhook_url text,
   created_at              timestamptz NOT NULL DEFAULT now(),
   updated_at              timestamptz NOT NULL DEFAULT now(),
 
@@ -280,37 +283,6 @@ CREATE TABLE IF NOT EXISTS channel_configs (
 CREATE TRIGGER channel_configs_updated_at
   BEFORE UPDATE ON channel_configs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- ---------- integration_settings ----------
--- Holds encrypted OAuth-app credentials (Google Cloud OAuth client, Azure
--- App Registration) configured through the admin UI. Same encryption scheme
--- as channel_configs. One row per integration key (e.g. 'google_oauth',
--- 'azure_oauth'). DB values take precedence over env-var fallbacks.
-CREATE TABLE IF NOT EXISTS integration_settings (
-  key              text PRIMARY KEY,
-  config_encrypted text NOT NULL,
-  updated_at       timestamptz NOT NULL DEFAULT now(),
-  updated_by       uuid REFERENCES users (id) ON DELETE SET NULL,
-  last_tested_at   timestamptz,
-  last_tested_ok   boolean
-);
-
-CREATE TRIGGER integration_settings_updated_at
-  BEFORE UPDATE ON integration_settings
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-ALTER TABLE integration_settings ENABLE ROW LEVEL SECURITY;
-
--- Admin-only access (service role bypasses RLS). Non-admin authenticated
--- users can't even read the row — the config_encrypted column is sensitive.
-CREATE POLICY "Admins can read integration_settings"
-  ON integration_settings FOR SELECT TO authenticated USING (is_admin());
-CREATE POLICY "Admins can insert integration_settings"
-  ON integration_settings FOR INSERT TO authenticated WITH CHECK (is_admin());
-CREATE POLICY "Admins can update integration_settings"
-  ON integration_settings FOR UPDATE TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Admins can delete integration_settings"
-  ON integration_settings FOR DELETE TO authenticated USING (is_admin());
 
 -- ---------- audit_log ----------
 CREATE TABLE IF NOT EXISTS audit_log (

@@ -5,17 +5,17 @@ import { validateWebhookSecret } from '@/lib/api-helpers'
 /**
  * SLA Auto-Escalation Endpoint
  *
- * Can be called periodically via cron.
+ * Can be called periodically via cron or n8n workflow.
  * Checks all pending inbound messages older than their account's sla_critical_hours,
  * and escalates the conversation if sla_auto_escalate is enabled.
  *
- * Authentication: requires WEBHOOK_SECRET header or valid user session.
+ * Authentication: requires N8N_WEBHOOK_SECRET header or valid user session.
  */
 export async function POST(request: Request) {
   try {
-    // Authenticate via webhook secret (for cron calls)
+    // Authenticate via webhook secret (for cron/n8n calls)
     const webhookSecret = request.headers.get('x-webhook-secret')
-    const expectedSecret = process.env.WEBHOOK_SECRET
+    const expectedSecret = process.env.N8N_WEBHOOK_SECRET
 
     if (!validateWebhookSecret(request)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

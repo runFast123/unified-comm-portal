@@ -17,14 +17,11 @@ import {
   Search,
   Info,
   Eye,
-  Clock,
-  Paperclip,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase-client'
 import { useToast } from '@/components/ui/toast'
-import { useConversationPresence } from '@/hooks/useConversationPresence'
 import type { ReplyTemplate } from '@/types/database'
 
 interface ConversationActionsProps {
@@ -40,10 +37,6 @@ interface ConversationActionsProps {
   emailSubject: string | null
   teamsChatId?: string | null
   conversationStatus?: string
-  /** Current viewer's auth.user.id — used as the presence-channel key. */
-  currentUserId?: string | null
-  /** Current viewer's display name (full_name or email). */
-  currentUserName?: string | null
 }
 
 export function ConversationActions({
@@ -59,25 +52,10 @@ export function ConversationActions({
   emailSubject,
   teamsChatId,
   conversationStatus = 'active',
-  currentUserId,
-  currentUserName,
 }: ConversationActionsProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState<string | null>(null)
-
-  // ── Realtime presence: who else is viewing this conversation ────────
-  // We pass an empty user_id when the page hasn't supplied one — the hook
-  // bails out internally and `others` stays empty so nothing breaks.
-  const { others: presenceOthers, setComposing } = useConversationPresence(
-    conversationId,
-    {
-      user_id: currentUserId || '',
-      display_name: currentUserName || 'Agent',
-      avatar_url: null,
-    }
-  )
-  const composingOthers = presenceOthers.filter((u) => u.composing)
 
   // Helper: update conversation status + mark inbound messages as replied
   const markWaitingOnCustomer = useCallback(async () => {
@@ -105,140 +83,12 @@ export function ConversationActions({
   const draftTimerRef = useRef<NodeJS.Timeout | null>(null)
   const sendReplyRef = useRef<(() => void) | null>(null)
 
-  // Start empty so SSR output matches the first client render. The saved
-  // draft is hydrated in the effect below to avoid a hydration mismatch.
-  const [manualText, setManualText] = useState('')
+  // Draft auto-save: restore from localStorage on mount
+  const [manualText, setManualText] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return localStorage.getItem(`draft-${conversationId}`) || ''
+  })
   const [editText, setEditText] = useState(aiDraftText || '')
-
-  // Schedule-send modal state
-  const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const [scheduledFor, setScheduledFor] = useState<string>('') // datetime-local string
-  const [scheduling, setScheduling] = useState(false)
-
-  // Outbound attachments (email-only for now). Uploaded to Supabase Storage
-  // via /api/attachments/upload before the reply is sent.
-  type PendingAttachment = {
-    path: string
-    filename: string
-    contentType: string
-    size: number
-    url: string
-  }
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
-  const [uploadingAttachments, setUploadingAttachments] = useState(false)
-  const attachmentInputRef = useRef<HTMLInputElement>(null)
-  const isEmailChannel = channel === 'email'
-
-  const formatBytes = useCallback((n: number): string => {
-    if (n < 1024) return `${n} B`
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-    return `${(n / 1024 / 1024).toFixed(1)} MB`
-  }, [])
-
-  const handleAttachmentPick = useCallback(() => {
-    if (!isEmailChannel) {
-      toast.warning('Attachments are only supported for Email right now')
-      return
-    }
-    attachmentInputRef.current?.click()
-  }, [isEmailChannel, toast])
-
-  const handleAttachmentFiles = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files ? Array.from(e.target.files) : []
-      // Reset the input so picking the same file twice still fires onChange.
-      if (attachmentInputRef.current) attachmentInputRef.current.value = ''
-      if (files.length === 0) return
-
-      setUploadingAttachments(true)
-      try {
-        const fd = new FormData()
-        fd.append('conversation_id', conversationId)
-        for (const f of files) fd.append('file', f)
-
-        const res = await fetch('/api/attachments/upload', { method: 'POST', body: fd })
-        if (!res.ok) {
-          let errMsg = 'Upload failed'
-          try {
-            const j = await res.json()
-            if (j?.error) errMsg = j.error
-          } catch { /* non-JSON */ }
-          toast.error(errMsg)
-          return
-        }
-        const data = (await res.json()) as { uploaded: PendingAttachment[] }
-        setPendingAttachments((prev) => [...prev, ...(data.uploaded || [])])
-      } catch (err) {
-        toast.error(`Upload failed: ${(err as Error).message}`)
-      } finally {
-        setUploadingAttachments(false)
-      }
-    },
-    [conversationId, toast]
-  )
-
-  const handleRemoveAttachment = useCallback(
-    (path: string) => {
-      setPendingAttachments((prev) => prev.filter((a) => a.path !== path))
-      // Fire-and-forget cleanup from storage.
-      fetch('/api/attachments/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
-      }).catch(() => { /* non-critical */ })
-    },
-    []
-  )
-
-  // Narrow, JSON-friendly attachment payload to send to /api/send.
-  const attachmentsForSend = useCallback(
-    () => pendingAttachments.map((a) => ({
-      path: a.path,
-      filename: a.filename,
-      contentType: a.contentType,
-      size: a.size,
-    })),
-    [pendingAttachments]
-  )
-
-  // Re-usable chip strip rendered above Send/Schedule controls.
-  const AttachmentChips = useCallback(() => {
-    if (pendingAttachments.length === 0 && !uploadingAttachments) return null
-    return (
-      <div className="flex flex-wrap items-center gap-1.5">
-        {pendingAttachments.map((a) => (
-          <span
-            key={a.path}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 text-gray-700 px-2.5 py-1 text-xs ring-1 ring-gray-200"
-          >
-            <Paperclip size={11} className="text-gray-400" />
-            <span className="max-w-[14rem] truncate">{a.filename}</span>
-            <span className="tabular-nums text-gray-400">{formatBytes(a.size)}</span>
-            <button
-              type="button"
-              onClick={() => handleRemoveAttachment(a.path)}
-              className="ml-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700"
-              aria-label={`Remove ${a.filename}`}
-            >
-              <X size={12} />
-            </button>
-          </span>
-        ))}
-        {uploadingAttachments && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-teal-50 text-teal-700 px-2.5 py-1 text-xs ring-1 ring-teal-200">
-            <Loader2 size={11} className="animate-spin" />
-            Uploading…
-          </span>
-        )}
-      </div>
-    )
-  }, [pendingAttachments, uploadingAttachments, formatBytes, handleRemoveAttachment])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const saved = localStorage.getItem(`draft-${conversationId}`)
-    if (saved) setManualText(saved)
-  }, [conversationId])
 
   // Template variable interpolation
   const interpolateVars = useCallback((text: string): string => {
@@ -336,15 +186,6 @@ export function ConversationActions({
     const value = e.target.value
     setManualText(value)
 
-    // Broadcast "composing" presence so other agents see a typing indicator.
-    // The hook handles its own 200ms debounce + 5s auto-clear; if the user
-    // empties the textarea, drop the flag immediately.
-    if (value.trim().length > 0) {
-      setComposing(true)
-    } else {
-      setComposing(false)
-    }
-
     // Auto-save draft to localStorage (debounced)
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
     draftTimerRef.current = setTimeout(() => {
@@ -372,7 +213,7 @@ export function ConversationActions({
     } else {
       setShortcutQuery(null)
     }
-  }, [shortcutLoaded, fetchShortcutTemplates, conversationId, setComposing])
+  }, [shortcutLoaded, fetchShortcutTemplates])
 
   // Handle shortcut selection
   const handleShortcutSelect = useCallback(async (template: ReplyTemplate) => {
@@ -500,40 +341,6 @@ export function ConversationActions({
     }
   }, [interpolateVars])
 
-  // ── Undo-send helper ────────────────────────────────────────────────
-  // Schedules `sendFn` to run after a 10s grace window, showing an Undo
-  // toast. If the user clicks Undo during that window, nothing is sent
-  // and no DB changes happen.
-  const UNDO_WINDOW_MS = 10_000
-  const scheduleUndoableSend = useCallback(
-    (label: string, sendFn: () => Promise<void>) => {
-      let cancelled = false
-      const timer = setTimeout(async () => {
-        if (cancelled) return
-        try {
-          await sendFn()
-        } catch (err) {
-          toast.error(`Send failed: ${(err as Error).message}`)
-        }
-      }, UNDO_WINDOW_MS)
-
-      toast.withAction(`${label} — sending in 10s`, {
-        type: 'info',
-        duration: UNDO_WINDOW_MS,
-        action: {
-          label: 'Undo',
-          onClick: (id) => {
-            cancelled = true
-            clearTimeout(timer)
-            toast.dismiss(id)
-            toast.warning('Send cancelled')
-          },
-        },
-      })
-    },
-    [toast]
-  )
-
   const handleApprove = useCallback(async () => {
     if (!aiReplyId) return
     if (!participantEmail && channel !== 'teams') {
@@ -544,12 +351,8 @@ export function ConversationActions({
       toast.error('No AI draft available to send')
       return
     }
-
-    // Snapshot attachments so they survive the 10s undo window. If the user
-    // picks more during that window we ignore them for this send.
-    const attachmentsSnapshot = isEmailChannel ? attachmentsForSend() : []
-
-    scheduleUndoableSend('AI reply', async () => {
+    setLoading('approve')
+    try {
       const supabase = createClient()
       const { error } = await supabase
         .from('ai_replies')
@@ -557,20 +360,26 @@ export function ConversationActions({
         .eq('id', aiReplyId)
       if (error) throw error
 
-      const res = await fetch('/api/send', {
+      // Send the reply via n8n (channel-specific action)
+      const actionMap: Record<string, string> = {
+        email: 'send_email_reply',
+        teams: 'send_teams_reply',
+        whatsapp: 'send_whatsapp_reply',
+      }
+      const res = await fetch('/api/n8n', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channel,
+          action: actionMap[channel] || 'send_email_reply',
           account_id: accountId,
-          conversation_id: conversationId,
-          reply_text: aiDraftText,
-          to: participantEmail,
-          subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
-          teams_chat_id: teamsChatId || undefined,
-          attachments: attachmentsSnapshot.length > 0
-            ? attachmentsSnapshot.map((a) => ({ path: a.path, filename: a.filename, contentType: a.contentType }))
-            : undefined,
+          data: {
+            to: participantEmail,
+            subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
+            message: aiDraftText,
+            conversation_id: conversationId,
+            reply_text: aiDraftText,
+            teams_chat_id: teamsChatId || undefined,
+          },
         }),
       })
 
@@ -581,6 +390,7 @@ export function ConversationActions({
           .update({ status: 'sent', sent_at: now })
           .eq('id', aiReplyId)
 
+        // Create outbound message record so it shows in conversation thread immediately
         await supabase.from('messages').insert({
           conversation_id: conversationId,
           account_id: accountId,
@@ -590,22 +400,25 @@ export function ConversationActions({
           message_text: aiDraftText,
           direction: 'outbound',
           email_subject: emailSubject ? `Re: ${emailSubject}` : null,
-          attachments: attachmentsSnapshot.length > 0 ? { attachments: attachmentsSnapshot } : null,
+          attachments: null,
           replied: true,
           reply_required: false,
           timestamp: now,
           received_at: now,
         })
 
-        setPendingAttachments([])
         toast.success('AI reply approved and sent!')
         await markWaitingOnCustomer()
       } else {
         toast.warning('Reply approved but sending failed. You can retry from the inbox.')
       }
       router.refresh()
-    })
-  }, [aiReplyId, accountId, accountName, aiDraftText, conversationId, participantEmail, router, toast, channel, emailSubject, teamsChatId, markWaitingOnCustomer, scheduleUndoableSend, isEmailChannel, attachmentsForSend])
+    } catch (err: any) {
+      toast.error('Failed to approve: ' + err.message)
+    } finally {
+      setLoading(null)
+    }
+  }, [aiReplyId, accountId, accountName, aiDraftText, conversationId, participantEmail, router, toast, channel, emailSubject, teamsChatId, markWaitingOnCustomer])
 
   const handleEditSend = useCallback(async () => {
     if (!participantEmail && channel !== 'teams') {
@@ -616,19 +429,16 @@ export function ConversationActions({
       toast.warning('Reply text cannot be empty.')
       return
     }
-    const textSnapshot = editText
-    const attachmentsSnapshot = isEmailChannel ? attachmentsForSend() : []
-    setShowEditReply(false)
-
-    scheduleUndoableSend('Edited reply', async () => {
+    setLoading('edit')
+    try {
       const supabase = createClient()
 
       if (aiReplyId) {
         const { error: updateError } = await supabase
           .from('ai_replies')
           .update({
-            edited_text: textSnapshot,
-            final_text: textSnapshot,
+            edited_text: editText,
+            final_text: editText,
             status: 'sent',
             sent_at: new Date().toISOString(),
           })
@@ -636,20 +446,25 @@ export function ConversationActions({
         if (updateError) console.warn('Failed to update AI reply before sending:', updateError.message)
       }
 
-      const res = await fetch('/api/send', {
+      const editActionMap: Record<string, string> = {
+        email: 'send_email_reply',
+        teams: 'send_teams_reply',
+        whatsapp: 'send_whatsapp_reply',
+      }
+      const res = await fetch('/api/n8n', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channel,
+          action: editActionMap[channel] || 'send_email_reply',
           account_id: accountId,
-          conversation_id: conversationId,
-          reply_text: textSnapshot,
-          to: participantEmail,
-          subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
-          teams_chat_id: teamsChatId || undefined,
-          attachments: attachmentsSnapshot.length > 0
-            ? attachmentsSnapshot.map((a) => ({ path: a.path, filename: a.filename, contentType: a.contentType }))
-            : undefined,
+          data: {
+            to: participantEmail,
+            subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
+            message: editText,
+            conversation_id: conversationId,
+            reply_text: editText,
+            teams_chat_id: teamsChatId || undefined,
+          },
         }),
       })
 
@@ -661,25 +476,29 @@ export function ConversationActions({
           channel: channel,
           sender_name: accountName.replace(/\s+Teams$/i, ''),
           sender_type: 'agent',
-          message_text: textSnapshot,
+          message_text: editText,
           direction: 'outbound',
           email_subject: emailSubject ? `Re: ${emailSubject}` : null,
-          attachments: attachmentsSnapshot.length > 0 ? { attachments: attachmentsSnapshot } : null,
+          attachments: null,
           replied: true,
           reply_required: false,
           timestamp: now,
           received_at: now,
         })
 
-        setPendingAttachments([])
         toast.success('Reply sent successfully!')
         await markWaitingOnCustomer()
       } else {
         toast.error('Failed to send reply.')
       }
+      setShowEditReply(false)
       router.refresh()
-    })
-  }, [editText, aiReplyId, accountId, accountName, participantEmail, conversationId, router, toast, channel, emailSubject, teamsChatId, markWaitingOnCustomer, scheduleUndoableSend, isEmailChannel, attachmentsForSend])
+    } catch (err: any) {
+      toast.error('Failed: ' + err.message)
+    } finally {
+      setLoading(null)
+    }
+  }, [editText, aiReplyId, accountId, accountName, participantEmail, conversationId, router, toast, channel, emailSubject, teamsChatId, markWaitingOnCustomer])
 
   const handleManualReply = useCallback(async () => {
     if (!participantEmail && channel !== 'teams') {
@@ -690,265 +509,77 @@ export function ConversationActions({
       toast.warning('Reply text cannot be empty.')
       return
     }
-    const textSnapshot = manualText
-    const attachmentsSnapshot = isEmailChannel ? attachmentsForSend() : []
-    // If the user picked attachments on a non-email channel, warn them that
-    // they will be ignored but proceed with the text.
-    if (!isEmailChannel && pendingAttachments.length > 0) {
-      toast.warning('Attachments are only supported for Email — sending text only.')
-    }
-    // Close textarea + clear draft optimistically. If the user hits Undo,
-    // we restore the draft so they can edit/resend.
-    setShowManualReply(false)
-    clearDraft()
-
-    scheduleUndoableSend('Manual reply', async () => {
+    setLoading('manual')
+    try {
       const supabase = createClient()
 
-      // Call /api/send FIRST. If we insert the outbound row before the send,
-      // /api/send's 15s dedup guard would match our own fresh insert and
-      // short-circuit, so no email actually goes out.
-      const res = await fetch('/api/send', {
+      await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        account_id: accountId,
+        channel: channel,
+        sender_name: accountName.replace(/\s+Teams$/i, ''),
+        sender_type: 'agent',
+        message_text: manualText,
+        email_subject: emailSubject || null,
+        direction: 'outbound',
+        attachments: null,
+        replied: true,
+        reply_required: false,
+        timestamp: new Date().toISOString(),
+        received_at: new Date().toISOString(),
+      })
+
+      // Send via n8n (channel-specific)
+      const manualActionMap: Record<string, string> = {
+        email: 'send_email_reply',
+        teams: 'send_teams_reply',
+        whatsapp: 'send_whatsapp_reply',
+      }
+      const res = await fetch('/api/n8n', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channel,
+          action: manualActionMap[channel] || 'send_email_reply',
           account_id: accountId,
-          conversation_id: conversationId,
-          reply_text: textSnapshot,
-          to: participantEmail,
-          subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
-          teams_chat_id: teamsChatId || undefined,
-          attachments: attachmentsSnapshot.length > 0
-            ? attachmentsSnapshot.map((a) => ({ path: a.path, filename: a.filename, contentType: a.contentType }))
-            : undefined,
+          data: {
+            to: participantEmail,
+            subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
+            message: manualText,
+            conversation_id: conversationId,
+            reply_text: manualText,
+            teams_chat_id: teamsChatId || undefined,
+          },
         }),
       })
 
       if (res.ok) {
-        // Only record the outbound message after the provider accepted it.
-        const now = new Date().toISOString()
-        await supabase.from('messages').insert({
-          conversation_id: conversationId,
-          account_id: accountId,
-          channel: channel,
-          sender_name: accountName.replace(/\s+Teams$/i, ''),
-          sender_type: 'agent',
-          message_text: textSnapshot,
-          email_subject: emailSubject || null,
-          direction: 'outbound',
-          attachments: attachmentsSnapshot.length > 0 ? { attachments: attachmentsSnapshot } : null,
-          replied: true,
-          reply_required: false,
-          timestamp: now,
-          received_at: now,
-        })
-        setPendingAttachments([])
         toast.success('Manual reply sent!')
         await markWaitingOnCustomer()
+        // Only clear draft + close textarea on real success
+        setShowManualReply(false)
+        clearDraft()
       } else {
+        // Send failed — keep the draft and textarea open so the agent can retry
+        // without retyping. Surface the underlying error if we can read it.
         let errMsg = ''
         try {
           const data = await res.json()
           errMsg = data?.error ? ` (${data.error})` : ''
         } catch { /* non-JSON response */ }
-        toast.error(`Delivery failed${errMsg}. Your message was NOT sent.`)
+        toast.warning(`Message saved locally but delivery failed${errMsg}. Click Send Reply again to retry.`)
       }
       router.refresh()
-    })
-  }, [manualText, conversationId, accountId, channel, accountName, participantEmail, router, toast, emailSubject, teamsChatId, markWaitingOnCustomer, clearDraft, scheduleUndoableSend, isEmailChannel, attachmentsForSend, pendingAttachments.length])
-
-  // ── Collision guard ─────────────────────────────────────────────────
-  // If another agent is actively typing in this conversation, ask for a
-  // soft confirmation before sending. Doesn't block — just pauses for
-  // intent. We use the action-toast pattern (Cancel default, Send Anyway
-  // continues) so the UX matches the existing Undo flow.
-  const requestSendWithCollisionCheck = useCallback(
-    (sendFn: () => void) => {
-      if (composingOthers.length === 0) {
-        sendFn()
-        return
-      }
-      const names = composingOthers.map((u) => u.display_name).join(', ')
-      const label = composingOthers.length === 1
-        ? `${names} is also composing a reply.`
-        : `${names} are also composing a reply.`
-      // Clear our own composing flag so we don't show ourselves as a
-      // collision against the other agent the moment they confirm.
-      setComposing(false)
-      toast.withAction(`${label} Send anyway?`, {
-        type: 'warning',
-        duration: 8000,
-        action: {
-          label: 'Send Anyway',
-          onClick: (id) => {
-            toast.dismiss(id)
-            sendFn()
-          },
-        },
-      })
-    },
-    [composingOthers, setComposing, toast]
-  )
-
-  const guardedManualReply = useCallback(() => {
-    requestSendWithCollisionCheck(() => { void handleManualReply() })
-  }, [requestSendWithCollisionCheck, handleManualReply])
-
-  // Keep sendReplyRef updated for Ctrl+Enter shortcut — also routes through
-  // the collision guard.
-  sendReplyRef.current = guardedManualReply
-
-  // ── Scheduled sends ──────────────────────────────────────────────────
-  // datetime-local inputs have no timezone; the browser interprets the
-  // value as local time. `new Date(value)` therefore produces the right
-  // instant without extra parsing.
-  const toLocalDatetimeValue = useCallback((d: Date): string => {
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  }, [])
-
-  const openScheduleModal = useCallback(() => {
-    if (!participantEmail && channel !== 'teams') {
-      toast.error('No recipient email address found')
-      return
-    }
-    if (!manualText.trim()) {
-      toast.warning('Type a reply first, then schedule it.')
-      return
-    }
-    // Default: one hour from now, rounded to the nearest minute.
-    const d = new Date(Date.now() + 60 * 60 * 1000)
-    d.setSeconds(0, 0)
-    setScheduledFor(toLocalDatetimeValue(d))
-    setShowScheduleModal(true)
-  }, [participantEmail, channel, manualText, toast, toLocalDatetimeValue])
-
-  // Quick-pick helpers
-  const applyQuickPick = useCallback((kind: 'in1h' | 'tomorrow9' | 'monday9' | 'nextweek') => {
-    const d = new Date()
-    if (kind === 'in1h') {
-      d.setTime(d.getTime() + 60 * 60 * 1000)
-      d.setSeconds(0, 0)
-    } else if (kind === 'tomorrow9') {
-      d.setDate(d.getDate() + 1)
-      d.setHours(9, 0, 0, 0)
-    } else if (kind === 'monday9') {
-      // 0 = Sunday, 1 = Monday, ...
-      const dow = d.getDay()
-      const daysUntilMonday = dow === 1 ? 7 : (8 - dow) % 7 || 7
-      d.setDate(d.getDate() + daysUntilMonday)
-      d.setHours(9, 0, 0, 0)
-    } else {
-      // Next week, same weekday, 9am
-      d.setDate(d.getDate() + 7)
-      d.setHours(9, 0, 0, 0)
-    }
-    setScheduledFor(toLocalDatetimeValue(d))
-  }, [toLocalDatetimeValue])
-
-  const handleScheduleSubmit = useCallback(async () => {
-    if (!scheduledFor) {
-      toast.warning('Pick a date and time.')
-      return
-    }
-    const when = new Date(scheduledFor)
-    if (Number.isNaN(when.getTime())) {
-      toast.error('Invalid date/time')
-      return
-    }
-    if (when.getTime() <= Date.now() + 60_000) {
-      toast.error('Scheduled time must be at least a minute from now.')
-      return
-    }
-    if (!manualText.trim()) {
-      toast.warning('Reply text cannot be empty.')
-      return
-    }
-
-    setScheduling(true)
-    try {
-      const res = await fetch('/api/scheduled-messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          channel,
-          reply_text: manualText,
-          to: participantEmail,
-          subject: emailSubject ? `Re: ${emailSubject}` : 'Re: Your communication',
-          teams_chat_id: teamsChatId || undefined,
-          scheduled_for: when.toISOString(),
-        }),
-      })
-      if (!res.ok) {
-        let errMsg = ''
-        try {
-          const j = await res.json()
-          errMsg = j?.error ? ` (${j.error})` : ''
-        } catch { /* non-JSON */ }
-        throw new Error(`Failed to schedule${errMsg}`)
-      }
-
-      const label = when.toLocaleString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-      toast.success(`Scheduled for ${label}`)
-      setShowScheduleModal(false)
-      clearDraft()
-      // Tell the scheduled-messages-list to refresh without a full route reload.
-      try {
-        window.dispatchEvent(new CustomEvent('scheduled-message-created'))
-      } catch { /* older browsers */ }
-      router.refresh()
-    } catch (err) {
-      toast.error((err as Error).message)
+    } catch (err: unknown) {
+      // Network error — also keep the draft so the agent can retry
+      const msg = err instanceof Error ? err.message : 'unknown error'
+      toast.error(`Failed: ${msg}. Your draft is kept; click Send Reply to retry.`)
     } finally {
-      setScheduling(false)
+      setLoading(null)
     }
-  }, [
-    scheduledFor,
-    manualText,
-    conversationId,
-    channel,
-    participantEmail,
-    emailSubject,
-    teamsChatId,
-    toast,
-    router,
-    clearDraft,
-  ])
+  }, [manualText, conversationId, accountId, channel, accountName, participantEmail, router, toast, emailSubject, teamsChatId, markWaitingOnCustomer, clearDraft])
 
-  // Live preview for the schedule modal
-  const schedulePreview = (() => {
-    if (!scheduledFor) return null
-    const when = new Date(scheduledFor)
-    if (Number.isNaN(when.getTime())) return null
-    const abs = when.toLocaleString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    })
-    const diffMs = when.getTime() - Date.now()
-    if (diffMs <= 0) return { abs, rel: 'in the past', invalid: true }
-    const mins = Math.round(diffMs / 60_000)
-    let rel: string
-    if (mins < 60) rel = `in ${mins} minute${mins === 1 ? '' : 's'}`
-    else if (mins < 60 * 48) {
-      const hours = Math.round(mins / 60)
-      rel = `in ${hours} hour${hours === 1 ? '' : 's'}`
-    } else {
-      const days = Math.round(mins / 60 / 24)
-      rel = `in ${days} day${days === 1 ? '' : 's'}`
-    }
-    return { abs, rel, invalid: mins < 1 }
-  })()
+  // Keep sendReplyRef updated for Ctrl+Enter shortcut
+  sendReplyRef.current = handleManualReply
 
   const handleMarkReplied = useCallback(async () => {
     setLoading('mark_replied')
@@ -1090,116 +721,6 @@ export function ConversationActions({
 
   return (
     <div className="sticky bottom-0 bg-white border-t border-gray-200 py-3 px-4 z-10 space-y-3">
-      {/* Hidden file input shared by every paperclip button in the composer */}
-      <input
-        ref={attachmentInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={handleAttachmentFiles}
-      />
-
-      {/* Schedule-send modal */}
-      {showScheduleModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowScheduleModal(false) }}
-        >
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_20px_60px_rgba(16,24,40,0.18),0_4px_12px_rgba(16,24,40,0.08)]">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-4 border-b border-gray-100 bg-gradient-to-b from-indigo-50/40 to-transparent px-6 py-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200">
-                  <Clock className="h-4 w-4" strokeWidth={2} />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-[15px] font-semibold leading-tight text-gray-900">Schedule reply</h3>
-                  <p className="mt-0.5 text-xs text-gray-500">Pick when this reply should be sent.</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowScheduleModal(false)}
-                aria-label="Close"
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-              >
-                <X className="h-4 w-4" strokeWidth={2} />
-              </button>
-            </div>
-
-            <div className="space-y-4 px-6 py-5">
-              {/* Quick-pick chips */}
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Quick picks</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[
-                    { key: 'in1h', label: 'In 1 hour' },
-                    { key: 'tomorrow9', label: 'Tomorrow 9am' },
-                    { key: 'monday9', label: 'Monday 9am' },
-                    { key: 'nextweek', label: 'Next week' },
-                  ].map((q) => (
-                    <button
-                      key={q.key}
-                      type="button"
-                      onClick={() => applyQuickPick(q.key as 'in1h' | 'tomorrow9' | 'monday9' | 'nextweek')}
-                      className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200 transition-colors hover:bg-indigo-100"
-                    >
-                      {q.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Datetime picker */}
-              <div>
-                <label htmlFor="schedule-datetime" className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                  Send at
-                </label>
-                <input
-                  id="schedule-datetime"
-                  type="datetime-local"
-                  value={scheduledFor}
-                  onChange={(e) => setScheduledFor(e.target.value)}
-                  className="mt-2 w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm tabular-nums text-gray-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* Preview */}
-              {schedulePreview && (
-                <div
-                  className={`rounded-xl px-3.5 py-2.5 text-xs ring-1 ${
-                    schedulePreview.invalid
-                      ? 'bg-red-50 text-red-700 ring-red-200'
-                      : 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                  }`}
-                >
-                  {schedulePreview.invalid
-                    ? 'Scheduled time must be at least a minute from now.'
-                    : <>Will send at <span className="font-semibold tabular-nums">{schedulePreview.abs}</span> ({schedulePreview.rel}).</>
-                  }
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-2 border-t border-gray-100 bg-gray-50/50 px-6 py-3">
-              <Button size="sm" variant="ghost" onClick={() => setShowScheduleModal(false)} disabled={scheduling}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={handleScheduleSubmit}
-                disabled={scheduling || !scheduledFor || (schedulePreview?.invalid ?? false)}
-              >
-                {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
-                Schedule
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Warning banner — only show for active/unreplied conversations */}
       {isActiveConvo && (
         <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
@@ -1286,50 +807,14 @@ export function ConversationActions({
               </div>
             )}
           </div>
-          {/* Pending attachment chips */}
-          <AttachmentChips />
-
-          <div className="flex gap-2 justify-end items-center">
-            {isEmailChannel ? (
-              <button
-                type="button"
-                onClick={handleAttachmentPick}
-                disabled={uploadingAttachments}
-                title="Attach files"
-                aria-label="Attach files"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 ring-1 ring-gray-200 bg-white hover:bg-gray-50 hover:text-gray-700 disabled:opacity-60"
-              >
-                {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled
-                title="Attachments are only supported for Email right now"
-                aria-label="Attachments disabled on this channel"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 ring-1 ring-gray-200 bg-white cursor-not-allowed"
-              >
-                <Paperclip size={14} />
-              </button>
-            )}
+          <div className="flex gap-2 justify-end">
             <Button size="sm" variant="ghost" onClick={() => { setShowManualReply(false); setShortcutQuery(null) }}>
               <X size={14} /> Cancel
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setShowPreview(!showPreview)}>
               <Eye size={14} /> {showPreview ? 'Hide Preview' : 'Preview'}
             </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
-              onClick={openScheduleModal}
-              disabled={scheduling}
-              title="Schedule this reply to send later"
-            >
-              <Clock size={14} />
-              Schedule
-            </Button>
-            <Button size="sm" variant="primary" onClick={guardedManualReply} disabled={loading === 'manual'}>
+            <Button size="sm" variant="primary" onClick={handleManualReply} disabled={loading === 'manual'}>
               {loading === 'manual' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
               Send Reply
             </Button>
@@ -1350,30 +835,7 @@ export function ConversationActions({
             className="w-full rounded-lg border border-purple-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 min-h-[120px] resize-y"
             rows={5}
           />
-          <AttachmentChips />
-          <div className="flex gap-2 justify-end items-center">
-            {isEmailChannel ? (
-              <button
-                type="button"
-                onClick={handleAttachmentPick}
-                disabled={uploadingAttachments}
-                title="Attach files"
-                aria-label="Attach files"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-purple-500 ring-1 ring-purple-200 bg-white hover:bg-purple-50 hover:text-purple-700 disabled:opacity-60"
-              >
-                {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled
-                title="Attachments are only supported for Email right now"
-                aria-label="Attachments disabled on this channel"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 ring-1 ring-gray-200 bg-white cursor-not-allowed"
-              >
-                <Paperclip size={14} />
-              </button>
-            )}
+          <div className="flex gap-2 justify-end">
             <Button size="sm" variant="ghost" onClick={() => setShowEditReply(false)}>
               <X size={14} /> Cancel
             </Button>

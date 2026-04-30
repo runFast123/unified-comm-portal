@@ -1,8 +1,6 @@
 import { redirect } from 'next/navigation'
-import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { DashboardShell } from '@/components/dashboard/dashboard-shell'
-import { BackgroundPoller } from '@/components/dashboard/background-poller'
-import { KeyboardShortcutProvider } from '@/components/dashboard/keyboard-shortcuts'
 import type { User } from '@/types/database'
 
 // Force dynamic rendering — layout must run on every request to compute
@@ -39,47 +37,30 @@ export default async function DashboardLayout({
     account_id: profile?.account_id ?? null,
   }
 
-  // Fetch sibling account IDs (same company, different channels) for non-admin
-  // users — using the proper `accounts.company_id` FK. Uses service-role
-  // client because RLS may hide other-channel rows from the user.
+  // Fetch sibling account IDs (same company, different channels) for non-admin users
+  // Uses direct REST API with service role key to bypass ALL RLS policies
   let companyAccountIds: string[] = user.account_id ? [user.account_id] : []
   if (user.role !== 'admin' && user.account_id) {
     try {
-      const service = await createServiceRoleClient()
-      const { data: myAccount } = await service
-        .from('accounts')
-        .select('id, name, company_id')
-        .eq('id', user.account_id)
-        .maybeSingle()
-
-      if (myAccount?.company_id) {
-        // Happy path — simple FK query.
-        const { data: siblings } = await service
-          .from('accounts')
-          .select('id')
-          .eq('company_id', myAccount.company_id)
-          .eq('is_active', true)
-        if (siblings && siblings.length > 0) {
-          companyAccountIds = siblings.map((s) => s.id as string)
-        }
-      } else if (myAccount) {
-        // Legacy fallback — user's account hasn't been backfilled. Warn and
-        // fall back to the old name-substring grouping so we don't break.
-        console.warn(
-          `[layout] Falling back to name-substring match — account ${user.account_id} ` +
-            `has no company_id. Run/verify the companies backfill migration.`
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      if (serviceKey && supabaseUrl) {
+        const res = await fetch(
+          `${supabaseUrl}/rest/v1/accounts?select=id,name&is_active=eq.true`,
+          {
+            headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` },
+            cache: 'no-store',
+          }
         )
-        const { data: allAccounts } = await service
-          .from('accounts')
-          .select('id, name')
-          .eq('is_active', true)
-        if (allAccounts && myAccount.name) {
-          const stripChannelSuffix = (n: string) =>
-            n.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-          const baseName = stripChannelSuffix(myAccount.name as string)
-          companyAccountIds = allAccounts
-            .filter((a) => stripChannelSuffix(a.name as string) === baseName)
-            .map((a) => a.id as string)
+        if (res.ok) {
+          const allAccounts: { id: string; name: string }[] = await res.json()
+          const myAccount = allAccounts.find(a => a.id === user.account_id)
+          if (myAccount) {
+            const baseName = myAccount.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
+            companyAccountIds = allAccounts
+              .filter(a => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
+              .map(a => a.id)
+          }
         }
       }
     } catch { /* fallback to single account_id */ }
@@ -97,11 +78,6 @@ export default async function DashboardLayout({
 
   return (
     <DashboardShell user={user} pendingCount={pendingCount ?? 0} companyAccountIds={companyAccountIds}>
-      {/* Silent timer that fires /api/inbox-sync every 2 min while the tab is visible
-          so new mail flows in without the user clicking Sync. */}
-      <BackgroundPoller />
-      {/* Global keyboard shortcuts + `?` cheatsheet modal. */}
-      <KeyboardShortcutProvider />
       {children}
     </DashboardShell>
   )

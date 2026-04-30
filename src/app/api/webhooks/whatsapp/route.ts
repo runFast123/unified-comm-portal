@@ -7,7 +7,6 @@ import {
   findOrCreateConversation,
   getAccountSettings,
 } from '@/lib/api-helpers'
-import { evaluateRouting, applyRoutingResult } from '@/lib/routing-engine'
 
 /**
  * GET handler for Meta webhook verification.
@@ -67,7 +66,7 @@ export async function POST(request: Request) {
     }
 
     // Rate limit per account
-    if (!(await checkRateLimit(`whatsapp_${account_id}`, 100, 60))) {
+    if (!checkRateLimit(`whatsapp_${account_id}`)) {
       return NextResponse.json(
         { error: 'Rate limit exceeded' },
         { status: 429 }
@@ -176,23 +175,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Routing rules — fail-soft so the webhook never errors on rule eval.
-    try {
-      const routingResult = await evaluateRouting({
-        channel: 'whatsapp',
-        account_id,
-        sender_email: null,
-        sender_phone: sender_phone || null,
-        subject: null,
-        message_text: messageText,
-      })
-      if (routingResult.matched_rule_ids.length > 0) {
-        await applyRoutingResult(supabase, conversationId, routingResult)
-      }
-    } catch (routingErr) {
-      console.error('Routing evaluation failed:', routingErr instanceof Error ? routingErr.message : routingErr)
-    }
-
     // Trigger notifications (async, non-blocking)
     try {
       const { triggerNotifications } = await import('@/lib/notification-service')
@@ -223,7 +205,7 @@ export async function POST(request: Request) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Webhook-Secret': process.env.WEBHOOK_SECRET || '',
+            'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || '',
           },
           body: JSON.stringify({
             message_id: message.id,
@@ -254,7 +236,7 @@ export async function POST(request: Request) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Webhook-Secret': process.env.WEBHOOK_SECRET || '',
+            'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || '',
           },
           body: JSON.stringify({
             message_id: message.id,

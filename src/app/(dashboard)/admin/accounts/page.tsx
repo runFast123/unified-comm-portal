@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase-client'
-import type { Account, Company } from '@/types/database'
+import type { Account } from '@/types/database'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
@@ -13,9 +13,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
 import { getChannelLabel, timeAgo } from '@/lib/utils'
-import { Search, Filter, ChevronRight, Loader2, Check, AlertCircle, X } from 'lucide-react'
-
-const SPAM_ALLOWLIST_MAX = 50
+import { Search, Filter, ChevronRight, Loader2, Check, AlertCircle } from 'lucide-react'
 
 const COMMON_TIMEZONES = [
   'Asia/Kuala_Lumpur',
@@ -40,25 +38,7 @@ const COMMON_TIMEZONES = [
   'UTC',
 ]
 
-// AI tone presets. Picking one in the dropdown fills the system-prompt textarea;
-// the admin can further edit it. These are seed prompts, not locked presets.
-const AI_TONE_PRESETS = {
-  friendly:
-    "You are a warm, friendly customer service agent. Use conversational language, contractions, and occasional light exclamations. Acknowledge the customer's feelings where relevant. Keep it professional but never stiff. Avoid jargon.",
-  formal:
-    "You are a formal, professional customer service agent. Use complete sentences, precise language, and a polite register. Avoid contractions and slang. Open with a greeting and close with a proper sign-off.",
-  terse:
-    "You are an efficient customer service agent. Write extremely short replies — ideally 1-3 sentences. No pleasantries, no filler. Lead with the answer or action. Use bullet points if listing more than one item.",
-  empathetic:
-    "You are a patient, empathetic customer service agent. Validate the customer's concern before addressing it. Use phrases like \"I understand this is frustrating\" when appropriate. Focus on reassurance alongside the facts.",
-  sales:
-    "You are an enthusiastic sales-minded agent. Highlight value and benefits, not just features. Suggest an obvious next step (call to action) in every reply. Match the customer's energy — warm but never pushy.",
-  clear:
-    "You are a clear, plain-English customer service agent. Use short sentences. Avoid jargon, marketing language, and filler. Every reply should answer the customer's question directly and tell them what happens next.",
-} as const
-
 interface ModalFormState {
-  company_id: string | null
   ai_auto_reply: boolean
   ai_trust_mode: boolean
   ai_confidence_threshold: number
@@ -69,24 +49,6 @@ interface ModalFormState {
   sla_warning_hours: number
   sla_critical_hours: number
   sla_auto_escalate: boolean
-  spam_detection_enabled: boolean
-  spam_allowlist: string[]
-  monthly_ai_budget_usd: number
-  ai_budget_alert_at_pct: number
-}
-
-// Sentinel value used in the company <select> to mean "open the inline
-// new-company input". Keeps the picker single-control without a separate
-// modal and avoids colliding with any UUID.
-const NEW_COMPANY_SENTINEL = '__new__'
-
-/**
- * Normalize a raw allowlist entry: trim, lowercase, drop empty.
- * Returns null if the entry is unusable.
- */
-function normalizeAllowlistEntry(raw: string): string | null {
-  const trimmed = raw.trim().toLowerCase()
-  return trimmed.length > 0 ? trimmed : null
 }
 
 export default function AccountsPage() {
@@ -99,40 +61,13 @@ export default function AccountsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [detailAccount, setDetailAccount] = useState<Account | null>(null)
   const [modalForm, setModalForm] = useState<ModalFormState | null>(null)
-  const [allowlistDraft, setAllowlistDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-  const [companies, setCompanies] = useState<Company[]>([])
-  // When the user picks "+ Create new company" we reveal an inline input.
-  const [newCompanyDraft, setNewCompanyDraft] = useState('')
-  const [showNewCompanyInput, setShowNewCompanyInput] = useState(false)
-  // Current-month AI spend for the open account (null while loading / error).
-  const [aiSpendThisMonth, setAiSpendThisMonth] = useState<number | null>(null)
-
-  // Fetch companies once on mount — small table, fine to load eagerly.
-  useEffect(() => {
-    let cancelled = false
-    async function fetchCompanies() {
-      const { data, error: fetchError } = await supabase
-        .from('companies')
-        .select('id, name, created_at')
-        .order('name', { ascending: true })
-      if (cancelled) return
-      if (fetchError) {
-        console.error('Failed to fetch companies:', fetchError.message)
-        return
-      }
-      setCompanies((data ?? []) as Company[])
-    }
-    fetchCompanies()
-    return () => { cancelled = true }
-  }, [supabase])
 
   // Initialize modal form when detailAccount changes
   useEffect(() => {
     if (detailAccount) {
       setModalForm({
-        company_id: detailAccount.company_id ?? null,
         ai_auto_reply: detailAccount.ai_auto_reply,
         ai_trust_mode: detailAccount.ai_trust_mode,
         ai_confidence_threshold: detailAccount.ai_confidence_threshold,
@@ -143,21 +78,9 @@ export default function AccountsPage() {
         sla_warning_hours: detailAccount.sla_warning_hours ?? 2,
         sla_critical_hours: detailAccount.sla_critical_hours ?? 4,
         sla_auto_escalate: detailAccount.sla_auto_escalate ?? true,
-        spam_detection_enabled: detailAccount.spam_detection_enabled ?? true,
-        spam_allowlist: Array.isArray(detailAccount.spam_allowlist)
-          ? detailAccount.spam_allowlist
-          : [],
-        monthly_ai_budget_usd: Number(detailAccount.monthly_ai_budget_usd ?? 50),
-        ai_budget_alert_at_pct: Number(detailAccount.ai_budget_alert_at_pct ?? 90),
       })
-      setAllowlistDraft('')
-      setShowNewCompanyInput(false)
-      setNewCompanyDraft('')
     } else {
       setModalForm(null)
-      setAllowlistDraft('')
-      setShowNewCompanyInput(false)
-      setNewCompanyDraft('')
     }
   }, [detailAccount])
 
@@ -168,32 +91,6 @@ export default function AccountsPage() {
       return () => clearTimeout(timer)
     }
   }, [toast])
-
-  // Fetch current-month AI spend whenever the detail modal opens.
-  // Uses the `account_ai_spend_this_month` RPC directly via the client.
-  useEffect(() => {
-    if (!detailAccount) {
-      setAiSpendThisMonth(null)
-      return
-    }
-    let cancelled = false
-    async function fetchSpend() {
-      if (!detailAccount) return
-      const { data, error: rpcError } = await supabase.rpc(
-        'account_ai_spend_this_month',
-        { p_account_id: detailAccount.id }
-      )
-      if (cancelled) return
-      if (rpcError) {
-        console.error('Failed to fetch AI spend:', rpcError.message)
-        setAiSpendThisMonth(null)
-        return
-      }
-      setAiSpendThisMonth(Number(data ?? 0))
-    }
-    fetchSpend()
-    return () => { cancelled = true }
-  }, [detailAccount, supabase])
 
   // Instantly persist a single field (or a small batch) to the DB
   const saveField = useCallback(async (fields: Record<string, unknown>) => {
@@ -229,53 +126,8 @@ export default function AccountsPage() {
 
   const saveAccountSettings = useCallback(async () => {
     if (!detailAccount || !modalForm) return
-
-    // Guard: if the admin opened the "+ Create new company" input but didn't
-    // type anything, that's almost certainly an oversight. Block save.
-    if (showNewCompanyInput && newCompanyDraft.trim().length === 0) {
-      setToast({ type: 'error', message: 'Enter a company name or pick an existing one' })
-      return
-    }
-
     setSaving(true)
-
-    // ── Resolve company_id ─────────────────────────────────────────────
-    // If the user typed a brand-new company name in the inline input we
-    // upsert it first (unique constraint on `name` makes this safe), then
-    // assign the resulting id to the account.
-    let resolvedCompanyId: string | null = modalForm.company_id
-    const newName = newCompanyDraft.trim()
-    if (showNewCompanyInput && newName.length > 0) {
-      const { data: upserted, error: upsertErr } = await supabase
-        .from('companies')
-        .upsert({ name: newName }, { onConflict: 'name' })
-        .select('id, name, created_at')
-        .single()
-      if (upsertErr || !upserted) {
-        setSaving(false)
-        setToast({ type: 'error', message: `Failed to create company: ${upsertErr?.message ?? 'unknown error'}` })
-        return
-      }
-      resolvedCompanyId = upserted.id as string
-      // Add to local list so the dropdown reflects it without a refetch.
-      setCompanies((prev) => {
-        if (prev.some((c) => c.id === upserted.id)) return prev
-        return [...prev, upserted as Company].sort((a, b) => a.name.localeCompare(b.name))
-      })
-    }
-
-    // Final sanitize of the allowlist on save. Trim, lowercase, drop empties,
-    // dedupe, and cap at SPAM_ALLOWLIST_MAX entries to prevent abuse.
-    const cleanedAllowlist = Array.from(
-      new Set(
-        (modalForm.spam_allowlist || [])
-          .map(normalizeAllowlistEntry)
-          .filter((v): v is string => v !== null)
-      )
-    ).slice(0, SPAM_ALLOWLIST_MAX)
-
     const fields = {
-      company_id: resolvedCompanyId,
       ai_auto_reply: modalForm.ai_auto_reply,
       ai_trust_mode: modalForm.ai_trust_mode,
       ai_confidence_threshold: modalForm.ai_confidence_threshold,
@@ -286,61 +138,13 @@ export default function AccountsPage() {
       sla_warning_hours: modalForm.sla_warning_hours,
       sla_critical_hours: modalForm.sla_critical_hours,
       sla_auto_escalate: modalForm.sla_auto_escalate,
-      spam_detection_enabled: modalForm.spam_detection_enabled,
-      spam_allowlist: cleanedAllowlist,
-      monthly_ai_budget_usd: Math.max(0, Number(modalForm.monthly_ai_budget_usd) || 0),
-      ai_budget_alert_at_pct: Math.min(
-        99,
-        Math.max(1, Math.round(Number(modalForm.ai_budget_alert_at_pct) || 90))
-      ),
     }
     const saved = await saveField(fields)
     setSaving(false)
     if (saved) {
-      // Reflect the sanitized allowlist + resolved company back into the form
-      setModalForm((prev) =>
-        prev
-          ? { ...prev, spam_allowlist: cleanedAllowlist, company_id: resolvedCompanyId }
-          : prev
-      )
-      setShowNewCompanyInput(false)
-      setNewCompanyDraft('')
       setToast({ type: 'success', message: 'Account settings saved successfully' })
     }
-  }, [detailAccount, modalForm, saveField, supabase, newCompanyDraft, showNewCompanyInput])
-
-  // Add a new substring to the allowlist. Dedup, trim, lowercase, enforce cap.
-  const addAllowlistEntry = useCallback(() => {
-    if (!modalForm) return
-    const next = normalizeAllowlistEntry(allowlistDraft)
-    if (!next) {
-      setAllowlistDraft('')
-      return
-    }
-    if (modalForm.spam_allowlist.includes(next)) {
-      setAllowlistDraft('')
-      return
-    }
-    if (modalForm.spam_allowlist.length >= SPAM_ALLOWLIST_MAX) {
-      setToast({
-        type: 'error',
-        message: `Allowlist limited to ${SPAM_ALLOWLIST_MAX} entries`,
-      })
-      return
-    }
-    setModalForm((prev) =>
-      prev ? { ...prev, spam_allowlist: [...prev.spam_allowlist, next] } : prev
-    )
-    setAllowlistDraft('')
-  }, [allowlistDraft, modalForm])
-
-  const removeAllowlistEntry = useCallback((entry: string) => {
-    setModalForm((prev) =>
-      prev
-        ? { ...prev, spam_allowlist: prev.spam_allowlist.filter((e) => e !== entry) }
-        : prev
-    )
-  }, [])
+  }, [detailAccount, modalForm, saveField])
 
   // Fetch accounts from Supabase
   useEffect(() => {
@@ -358,7 +162,11 @@ export default function AccountsPage() {
         return
       }
 
-      const mapped: Account[] = (data ?? []) as Account[]
+      // Map DB field make_scenario_id -> n8n_workflow_id for the Account type
+      const mapped: Account[] = (data ?? []).map((row: Record<string, unknown>) => ({
+        ...row,
+        n8n_workflow_id: row.make_scenario_id ?? null,
+      })) as Account[]
 
       // Sort: group by base company name, email first then teams
       const channelOrder: Record<string, number> = { email: 0, teams: 1, whatsapp: 2 }
@@ -727,74 +535,6 @@ export default function AccountsPage() {
               </div>
             </div>
 
-            {/* Company / Identity */}
-            <div className="rounded-lg border border-gray-200 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900">Company</h3>
-                {modalForm.company_id === null && !showNewCompanyInput && (
-                  <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                    Legacy: company derived from name
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-gray-500">
-                Sibling channel accounts (e.g. an Email + Teams account for the same tenant)
-                are grouped by this. Required for new accounts; existing rows fall back to a
-                name-prefix match until set.
-              </p>
-
-              <select
-                value={
-                  showNewCompanyInput
-                    ? NEW_COMPANY_SENTINEL
-                    : (modalForm.company_id ?? '')
-                }
-                onChange={(e) => {
-                  const v = e.target.value
-                  if (v === NEW_COMPANY_SENTINEL) {
-                    setShowNewCompanyInput(true)
-                    return
-                  }
-                  setShowNewCompanyInput(false)
-                  setNewCompanyDraft('')
-                  setModalForm((prev) =>
-                    prev ? { ...prev, company_id: v === '' ? null : v } : prev
-                  )
-                }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none bg-white"
-              >
-                <option value="">— Unassigned (legacy) —</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-                <option value={NEW_COMPANY_SENTINEL}>+ Create new company…</option>
-              </select>
-
-              {showNewCompanyInput && (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newCompanyDraft}
-                    onChange={(e) => setNewCompanyDraft(e.target.value)}
-                    placeholder="New company name (e.g. Acme Corp)"
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
-                    autoFocus
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setShowNewCompanyInput(false)
-                      setNewCompanyDraft('')
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              )}
-            </div>
-
             {/* Phase Toggles (existing functionality) */}
             <div className="rounded-lg border border-gray-200 p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -945,32 +685,8 @@ export default function AccountsPage() {
             <div className="rounded-lg border border-gray-200 p-4 space-y-2">
               <h3 className="text-sm font-semibold text-gray-900">AI System Prompt</h3>
               <p className="text-xs text-gray-500">
-                Pick a tone preset to start from, or write your own. The text below is what the AI sees before every reply.
+                Custom instructions for the AI when generating replies for this account
               </p>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Tone preset</label>
-                <select
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
-                  onChange={(e) => {
-                    const key = e.target.value as keyof typeof AI_TONE_PRESETS | ''
-                    if (!key) return
-                    const preset = AI_TONE_PRESETS[key]
-                    setModalForm((prev) =>
-                      prev ? { ...prev, ai_system_prompt: preset } : prev
-                    )
-                    e.target.value = '' // reset dropdown so re-selecting the same preset still applies
-                  }}
-                  defaultValue=""
-                >
-                  <option value="">— Apply a preset —</option>
-                  <option value="friendly">Friendly — warm &amp; conversational</option>
-                  <option value="formal">Formal — polite &amp; professional</option>
-                  <option value="terse">Terse — short &amp; direct</option>
-                  <option value="empathetic">Empathetic — validating &amp; patient</option>
-                  <option value="sales">Sales — enthusiastic &amp; persuasive</option>
-                  <option value="clear">Clear</option>
-                </select>
-              </div>
               <textarea
                 value={modalForm.ai_system_prompt}
                 onChange={(e) =>
@@ -983,132 +699,6 @@ export default function AccountsPage() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none resize-y"
               />
             </div>
-
-            {/* AI Cost Budget */}
-            {(() => {
-              const budget = Number(modalForm.monthly_ai_budget_usd) || 0
-              const alertPct = Number(modalForm.ai_budget_alert_at_pct) || 90
-              const spent = aiSpendThisMonth ?? 0
-              const pct = budget > 0 ? (spent / budget) * 100 : 0
-              const pctClamped = Math.min(100, Math.max(0, pct))
-              const isOver = budget > 0 && spent >= budget
-              const isAmber = !isOver && pct >= alertPct
-              // Tailwind 4 — only static class strings, no dynamic interpolation.
-              const barClass = isOver
-                ? 'bg-red-500'
-                : isAmber
-                ? 'bg-amber-500'
-                : 'bg-green-500'
-              const pctTextClass = isOver
-                ? 'text-red-700'
-                : isAmber
-                ? 'text-amber-700'
-                : 'text-green-700'
-              return (
-                <div className="rounded-lg border border-gray-200 p-4 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900">AI Cost Budget</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Monthly hard cap on AI spend for this account. Calls are blocked once
-                      the cap is hit. Cost is estimated from token counts — coarse but useful
-                      for runaway-cost detection.
-                    </p>
-                  </div>
-
-                  {/* Live readout */}
-                  <div className="rounded-md bg-gray-50 border border-gray-100 p-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Spent this month</span>
-                      <span className={`font-semibold ${pctTextClass}`}>
-                        {aiSpendThisMonth === null ? (
-                          <span className="text-gray-400 italic">loading…</span>
-                        ) : (
-                          <>
-                            ${spent.toFixed(4)} / ${budget.toFixed(2)}{' '}
-                            <span className="text-xs font-normal text-gray-500">
-                              ({pct.toFixed(1)}%)
-                            </span>
-                          </>
-                        )}
-                      </span>
-                    </div>
-                    <div className="mt-2 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-                      <div
-                        className={`h-full ${barClass} transition-all`}
-                        style={{ width: `${pctClamped}%` }}
-                      />
-                    </div>
-                    {isOver && (
-                      <p className="mt-2 text-xs font-medium text-red-700">
-                        Budget reached — new AI calls will be skipped until next month.
-                      </p>
-                    )}
-                    {!isOver && isAmber && (
-                      <p className="mt-2 text-xs font-medium text-amber-700">
-                        Past the {alertPct}% alert threshold.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Monthly budget (USD)
-                      </label>
-                      <p className="text-xs text-gray-500 mb-1.5">
-                        Default $50. Set to 0 to disable the cap.
-                      </p>
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={modalForm.monthly_ai_budget_usd}
-                        onChange={(e) =>
-                          setModalForm((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  monthly_ai_budget_usd: Math.max(0, Number(e.target.value) || 0),
-                                }
-                              : prev
-                          )
-                        }
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Alert threshold (%)
-                      </label>
-                      <p className="text-xs text-gray-500 mb-1.5">
-                        Audit alert fires when spend crosses this % of budget.
-                      </p>
-                      <input
-                        type="number"
-                        min={1}
-                        max={99}
-                        step={1}
-                        value={modalForm.ai_budget_alert_at_pct}
-                        onChange={(e) =>
-                          setModalForm((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  ai_budget_alert_at_pct: Math.min(
-                                    99,
-                                    Math.max(1, Math.round(Number(e.target.value) || 90))
-                                  ),
-                                }
-                              : prev
-                          )
-                        }
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )
-            })()}
 
             {/* SLA Settings */}
             <div className="rounded-lg border border-gray-200 p-4 space-y-4">
@@ -1169,106 +759,9 @@ export default function AccountsPage() {
               </div>
             </div>
 
-            {/* Spam Detection */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4 shadow-sm">
-              <div>
-                <h3 className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
-                  Spam detection
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">
-                  Per-account overrides for the global spam filter. Useful for accounts whose
-                  customers legitimately email from noreply/notifications addresses.
-                </p>
-              </div>
-
-              {/* Enable toggle */}
-              <div className="flex items-center justify-between">
-                <div className="flex-1 mr-4">
-                  <span className="text-sm font-medium text-gray-700">Enable spam detection</span>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    When off, every inbound is treated as real mail for this account. Turn off for
-                    accounts whose customers legitimately send from noreply/notifications addresses
-                    (banks, carriers, automated platforms).
-                  </p>
-                </div>
-                <Toggle
-                  checked={modalForm.spam_detection_enabled}
-                  onChange={(val) =>
-                    setModalForm((prev) =>
-                      prev ? { ...prev, spam_detection_enabled: val } : prev
-                    )
-                  }
-                />
-              </div>
-
-              {/* Sender allowlist */}
-              <div>
-                <label className="block text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-1">
-                  Sender allowlist
-                </label>
-                <p className="text-xs text-gray-500 mb-2">
-                  Senders containing any of these substrings will NEVER be flagged as spam, even
-                  if other rules match. Case-insensitive. e.g. <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">notifications@mybank.com</code>, <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">@carriersupport.com</code>
-                </p>
-
-                {/* Chip list */}
-                {modalForm.spam_allowlist.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {modalForm.spam_allowlist.map((entry) => (
-                      <span
-                        key={entry}
-                        className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200 px-2.5 py-1 text-xs font-medium text-teal-800"
-                      >
-                        {entry}
-                        <button
-                          type="button"
-                          onClick={() => removeAllowlistEntry(entry)}
-                          className="rounded-full p-0.5 text-teal-500 hover:bg-teal-100 hover:text-teal-700 transition-colors"
-                          aria-label={`Remove ${entry}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-400 italic mb-2">No allowlist entries.</p>
-                )}
-
-                {/* Add input */}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={allowlistDraft}
-                    onChange={(e) => setAllowlistDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        addAllowlistEntry()
-                      }
-                    }}
-                    placeholder="e.g. notifications@mybank.com"
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={addAllowlistEntry}
-                    disabled={
-                      !allowlistDraft.trim() ||
-                      modalForm.spam_allowlist.length >= SPAM_ALLOWLIST_MAX
-                    }
-                  >
-                    Add
-                  </Button>
-                </div>
-                <p className="text-[11px] text-gray-400 mt-1.5">
-                  {modalForm.spam_allowlist.length} / {SPAM_ALLOWLIST_MAX} entries
-                </p>
-              </div>
-            </div>
-
             {/* Info row */}
             <div className="flex items-center justify-between text-xs text-gray-400">
+              <span>n8n Workflow: {detailAccount.n8n_workflow_id || 'None'}</span>
               <span>Last updated: {timeAgo(detailAccount.updated_at)}</span>
             </div>
 

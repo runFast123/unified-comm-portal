@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient, createServerSupabaseClient } from '@/lib/supabase-server'
 import { callAI, getAccountSettings, checkRateLimit } from '@/lib/api-helpers'
-import { AIBudgetExceededError } from '@/lib/ai-usage'
 import { logInfo, logError } from '@/lib/logger'
-import { getRequestId } from '@/lib/request-id'
 import type { Category, Sentiment, Urgency } from '@/types/database'
 
 const DEFAULT_CLASSIFICATION_PROMPT = `You are a customer message classifier for a telecommunications company. Analyze the customer message and return a JSON object with the following fields:
@@ -50,12 +48,10 @@ async function isAutoResolveMarketingEnabled(
 }
 
 export async function POST(request: Request) {
-  const requestId = await getRequestId()
-  const startedAt = Date.now()
   try {
     // Allow internal calls (from webhook handlers) via webhook secret, or authenticated users
     const webhookSecret = request.headers.get('x-webhook-secret')
-    const expectedSecret = process.env.WEBHOOK_SECRET
+    const expectedSecret = process.env.N8N_WEBHOOK_SECRET
     const isInternalCall = !!expectedSecret && webhookSecret === expectedSecret
 
     let authenticatedUserId: string | null = null
@@ -81,7 +77,7 @@ export async function POST(request: Request) {
     }
 
     // Rate limit per account
-    if (!(await checkRateLimit(`classify:${account_id}`, 100, 60))) {
+    if (!checkRateLimit(`classify:${account_id}`)) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
@@ -116,34 +112,7 @@ export async function POST(request: Request) {
     // Call AI API for classification with account context
     const classificationPrompt = `${DEFAULT_CLASSIFICATION_PROMPT}\n\nThis message was received by the company "${accountName}". Use this context to better understand the message intent.`
     const userMessage = `Channel: ${validatedChannel}\nMessage: ${message_text}`
-    let rawResponse: string
-    try {
-      rawResponse = await callAI(classificationPrompt, userMessage, {
-        account_id,
-        endpoint: 'classify',
-        request_id: requestId,
-      })
-    } catch (err) {
-      if (err instanceof AIBudgetExceededError) {
-        logError('ai', 'budget_exceeded_classify', err.message, {
-          request_id: requestId,
-          account_id,
-          monthly_total_usd: err.monthly_total_usd,
-          budget_usd: err.budget_usd,
-        })
-        return NextResponse.json(
-          {
-            error: 'AI budget exceeded for this account',
-            skipped: true,
-            monthly_total_usd: err.monthly_total_usd,
-            budget_usd: err.budget_usd,
-            retry_after: 'next month',
-          },
-          { status: 200 }
-        )
-      }
-      throw err
-    }
+    const rawResponse = await callAI(classificationPrompt, userMessage)
 
     // Parse the JSON response from Claude
     let classification: {
@@ -354,23 +323,13 @@ export async function POST(request: Request) {
       }
     }
 
-    logInfo('ai', 'classify', `Classified as ${classification.category} / ${classification.sentiment}`, {
-      request_id: requestId,
-      message_id,
-      account_id,
-      category: classification.category,
-      sentiment: classification.sentiment,
-      confidence: classification.confidence,
-      duration_ms: Date.now() - startedAt,
-    })
+    logInfo('ai', 'classify', `Classified as ${classification.category} / ${classification.sentiment}`, { message_id, account_id, category: classification.category, sentiment: classification.sentiment, confidence: classification.confidence })
     return NextResponse.json(stored, { status: 200 })
   } catch (error) {
-    logError('ai', 'classify_error', error instanceof Error ? error.message : 'Unknown error', {
-      request_id: requestId,
-      duration_ms: Date.now() - startedAt,
-    })
+    console.error('Classification error:', error)
+    logError('ai', 'classify_error', error instanceof Error ? error.message : 'Unknown error')
     return NextResponse.json(
-      { error: 'Internal server error', request_id: requestId },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

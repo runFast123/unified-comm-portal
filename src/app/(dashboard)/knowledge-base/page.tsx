@@ -28,7 +28,6 @@ import { Toggle } from '@/components/ui/toggle'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Pagination } from '@/components/ui/pagination'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Skeleton } from '@/components/ui/skeleton'
 import type { KBArticle } from '@/types/database'
 import { cn, truncate, timeAgo } from '@/lib/utils'
 import { useUser } from '@/context/user-context'
@@ -469,47 +468,15 @@ export default function KnowledgeBasePage() {
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-2">
-            <Skeleton className="h-7 w-40" />
-            <Skeleton className="h-4 w-72" />
+      <div className="flex h-80 items-center justify-center animate-fade-in">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-9 w-28 rounded-lg" />
-            <Skeleton className="h-9 w-28 rounded-lg" />
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-700">Loading knowledge base</p>
+            <p className="text-xs text-gray-400 mt-1">Fetching articles...</p>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]"
-            >
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-10 w-10 rounded-lg" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-3 w-24 rounded" />
-                  <Skeleton className="h-6 w-12 rounded" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-          <Skeleton className="h-11 w-full" />
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 border-t border-gray-100 px-4 py-3">
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-3 w-40 rounded" />
-                <Skeleton className="h-3 w-64 rounded" />
-              </div>
-              <Skeleton className="h-4 w-20 rounded-full" />
-              <Skeleton className="h-8 w-20 rounded-lg" />
-            </div>
-          ))}
         </div>
       </div>
     )
@@ -655,22 +622,13 @@ export default function KnowledgeBasePage() {
       <Card>
         {filteredArticles.length === 0 ? (
           <EmptyState
-            icon={FileQuestion}
-            title={articles.length === 0 ? 'No articles yet' : 'No articles found'}
+            icon={<FileQuestion className="h-12 w-12" />}
+            title="No articles found"
             description={
               articles.length === 0
-                ? 'Add your first knowledge-base article so the AI can answer customer questions with accurate information.'
+                ? 'No knowledge base articles have been created yet. Add your first article to get started.'
                 : 'Try adjusting your search or filter criteria.'
             }
-            action={
-              articles.length === 0 ? (
-                <Button variant="primary" onClick={handleOpenAdd}>
-                  <Plus className="h-4 w-4" />
-                  Add Article
-                </Button>
-              ) : undefined
-            }
-            hint={articles.length === 0 ? 'Tip: articles scoped to a company are used only for that account.' : undefined}
           />
         ) : (
           <><Table>
