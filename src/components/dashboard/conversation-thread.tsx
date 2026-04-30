@@ -360,34 +360,51 @@ function EmailMessage({ message, isOutbound }: { message: Message; isOutbound: b
   const initials = name.split(' ').filter(Boolean).map(w => w[0]).join('').substring(0, 2).toUpperCase() || 'U'
 
   return (
+    // Outbound floats right, inbound floats left. Both capped at 90% so a
+    // wide window doesn't stretch a single message edge-to-edge.
     <div className={cn('max-w-[90%]', isOutbound ? 'ml-auto' : 'mr-auto')}>
       <div
         className={cn(
-          'rounded-xl border shadow-sm overflow-hidden',
+          'rounded-xl border-2 shadow-md overflow-hidden',
+          // Bumped from a pale teal-50→white gradient (which read as "white"
+          // on a white page and made outbound messages effectively invisible
+          // alongside inbound) to a stronger teal-100 fill + teal-300 border.
+          // Inbound stays white-on-gray so the two are now unambiguous at a
+          // glance even when chronologically interleaved.
           isOutbound
-            ? 'border-teal-200 bg-gradient-to-b from-teal-50 to-white'
+            ? 'border-teal-300 bg-teal-50'
             : 'border-gray-200 bg-white'
         )}
       >
         {/* Email header */}
         <div className={cn(
-          'px-4 py-3 border-b',
-          isOutbound ? 'border-teal-100 bg-teal-50/50' : 'border-gray-100 bg-gray-50/50'
+          'px-5 py-3.5 border-b',
+          isOutbound ? 'border-teal-200 bg-teal-100/60' : 'border-gray-100 bg-gray-50/50'
         )}>
           <div className="flex items-start gap-3">
             <div className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white',
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm',
               isOutbound ? 'bg-teal-600' : 'bg-indigo-500'
             )}>
               {initials || 'U'}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-sm text-gray-900 truncate">{name}</span>
+                {/* Direction badge — leaves no doubt about who sent what. */}
+                {isOutbound ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-teal-600 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                    You sent
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                    Received
+                  </span>
+                )}
                 {message.sender_type === 'ai' && <AIBadge />}
               </div>
               {email && email !== name && (
-                <span className="text-xs text-gray-400 truncate block">{email}</span>
+                <span className="text-xs text-gray-500 truncate block mt-0.5">{email}</span>
               )}
               {message.email_subject && (
                 <div className="flex items-center gap-1.5 mt-1">
@@ -399,7 +416,7 @@ function EmailMessage({ message, isOutbound }: { message: Message; isOutbound: b
               )}
             </div>
             <div className="flex flex-col items-end gap-0.5 shrink-0">
-              <span className="text-[11px] font-medium text-gray-500">{formatRelativeTime(message.timestamp)}</span>
+              <span className="text-[11px] font-medium text-gray-600">{formatRelativeTime(message.timestamp)}</span>
               <span className="text-[10px] text-gray-400 flex items-center gap-1">
                 <Clock size={9} />
                 {formatTime(message.timestamp)}
@@ -408,8 +425,8 @@ function EmailMessage({ message, isOutbound }: { message: Message; isOutbound: b
           </div>
         </div>
 
-        {/* Email body */}
-        <div className="px-4 py-3">
+        {/* Email body — extra padding so dense threads breathe */}
+        <div className="px-5 py-4">
           {formatEmailBody(message.message_text)}
         </div>
 
@@ -446,21 +463,37 @@ function TeamsBubble({ message, isOutbound }: { message: Message; isOutbound: bo
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className={cn('mb-1 flex items-center gap-2', isOutbound ? 'justify-end' : 'justify-start')}>
-          <span className="text-xs font-semibold text-gray-700">{senderName}</span>
+        <div className={cn('mb-1.5 flex items-center gap-2 flex-wrap', isOutbound ? 'justify-end' : 'justify-start')}>
+          <span className="text-xs font-semibold text-gray-800">{senderName}</span>
+          {/* Direction badge — same pattern as EmailMessage so the inbox feels consistent. */}
+          {isOutbound ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#6264a7] text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+              You sent
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-200 text-gray-700 border border-gray-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+              Received
+            </span>
+          )}
           {message.sender_type === 'ai' && <AIBadge />}
           <span className="text-[10px] text-gray-400">{formatRelativeTime(message.timestamp)}</span>
         </div>
 
         <div
           className={cn(
-            'rounded-xl px-4 py-3 shadow-sm',
+            'rounded-xl px-5 py-3.5 shadow-md border-2',
+            // Was a barely-there pale gradient. Now a vivid Teams purple
+            // (#6264a7 family) so outbound is unmistakable next to the
+            // white inbound bubbles.
             isOutbound
-              ? 'bg-gradient-to-br from-[#e8e8f5] to-[#ddddf5] border border-[#d0d0e8]'
-              : 'bg-white border border-gray-200'
+              ? 'bg-[#6264a7] text-white border-[#5558a3]'
+              : 'bg-white border-gray-200'
           )}
         >
-          <p className="text-sm leading-relaxed whitespace-pre-wrap text-gray-900">
+          <p className={cn(
+            'text-sm leading-relaxed whitespace-pre-wrap',
+            isOutbound ? 'text-white' : 'text-gray-900'
+          )}>
             {inlineFormat(message.message_text || '', `tm-${message.id}`)}
           </p>
           {message.attachments && renderAttachments(message.attachments)}
@@ -510,7 +543,10 @@ export function ConversationThread({ messages, channel, conversationId }: Conver
     !!conversationId && messages.length >= SUMMARY_MIN_MESSAGES
 
   return (
-    <div className="space-y-5 py-6">
+    // Bumped vertical breathing room from `space-y-5 py-6` — multi-day threads
+    // were rendering as a wall of bubbles with too little separation between
+    // each. `space-y-7 py-8` gives each message a clear visual boundary.
+    <div className="space-y-7 py-8">
       {showSummary && (
         <div className="sticky top-0 z-10 -mx-1 px-1 pb-1">
           <ThreadSummary
