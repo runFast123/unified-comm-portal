@@ -22,6 +22,7 @@ import {
   getPriorityColor,
 } from '@/lib/utils'
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
+import { isSuperAdmin } from '@/lib/auth'
 import type {
   ChannelType,
   Priority,
@@ -47,18 +48,18 @@ export default async function ConversationPage({
     data: { user: authUser },
   } = await supabase.auth.getUser()
 
-  let userAccountId: string | null = null
-  let userIsAdmin = false
+  let userCompanyId: string | null = null
+  let userIsSuperAdmin = false
   let currentUserName: string | null = null
   const currentUserId: string | null = authUser?.id ?? null
   if (authUser) {
     const { data: profile } = await supabase
       .from('users')
-      .select('role, account_id, full_name')
+      .select('role, account_id, company_id, full_name')
       .eq('id', authUser.id)
       .maybeSingle()
-    userIsAdmin = profile?.role === 'admin'
-    userAccountId = profile?.account_id ?? null
+    userIsSuperAdmin = isSuperAdmin(profile?.role)
+    userCompanyId = profile?.company_id ?? null
     currentUserName = profile?.full_name ?? authUser.email ?? null
   }
 
@@ -92,18 +93,17 @@ export default async function ConversationPage({
     notFound()
   }
 
-  // Non-admin users can only access conversations for their own company (including sibling channel accounts)
-  // Uses service role client to bypass RLS for the account lookup
-  if (!userIsAdmin && userAccountId) {
+  // Non-super-admin users can only access conversations for accounts in their
+  // own company. Uses service role to bypass RLS — the page's RLS would already
+  // hide the row, but we hit notFound() ourselves so the error matches a
+  // missing conversation instead of a permission error.
+  if (!userIsSuperAdmin && userCompanyId) {
     const adminSupabase = await createServiceRoleClient()
-    const { data: myAccount } = await adminSupabase.from('accounts').select('name').eq('id', userAccountId).maybeSingle()
-    const baseName = (myAccount?.name || '').replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-    const { data: companyAccounts } = await adminSupabase.from('accounts').select('id, name').eq('is_active', true)
-    const allowedIds = new Set(
-      (companyAccounts || [])
-        .filter((a: any) => a.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim() === baseName)
-        .map((a: any) => a.id)
-    )
+    const { data: companyAccounts } = await adminSupabase
+      .from('accounts')
+      .select('id')
+      .eq('company_id', userCompanyId)
+    const allowedIds = new Set((companyAccounts || []).map((a: { id: string }) => a.id))
     if (!allowedIds.has(conversation.account_id)) {
       notFound()
     }

@@ -440,16 +440,16 @@ export async function callAI(
 // ─── Account Access Verification ────────────────────────────────────
 /**
  * Verifies that a user has access to a specific account.
- * - Admins can access all accounts.
- * - Non-admin users can access their own account, or any sibling account
- *   sharing the same `company_id` (multi-channel grouping).
+ *   - super_admin → always true (cross-tenant).
+ *   - admin / company_admin / company_member → access any account in the
+ *     same `company_id`.
+ *   - users with no company_id but an account_id → only their own account
+ *     (legacy single-account users).
+ *   - everyone else → false.
  *
- * Legacy fallback: if EITHER the user's account or the requested account has
- * a NULL `company_id` (un-backfilled / freshly inserted without a company),
- * fall back to the OLD name-substring heuristic — but emit `console.warn` so
- * the regression is visible in logs and we can spot rows missed by backfill.
- *
- * Returns true if access is allowed, false otherwise.
+ * Backed by `companies.company_id`; the old name-substring heuristic is gone.
+ * If you see denials post-migration, verify the backfill ran by inspecting
+ * `accounts.company_id` (every row should be non-null).
  */
 export async function verifyAccountAccess(
   userId: string,
@@ -458,7 +458,7 @@ export async function verifyAccountAccess(
   const supabase = await createServiceRoleClient()
   const { data: user, error } = await supabase
     .from('users')
-    .select('role, account_id')
+    .select('role, account_id, company_id')
     .eq('id', userId)
     .maybeSingle()
 
@@ -466,52 +466,30 @@ export async function verifyAccountAccess(
     return false
   }
 
-  // Admins can access all accounts — fast path, no DB lookup needed.
-  if (user.role === 'admin') {
+  // super_admin bypasses company scope entirely.
+  if (user.role === 'super_admin') {
     return true
   }
 
-  // Non-admins must be tied to an account at all.
-  if (!user.account_id) {
+  // Same account is always allowed (covers legacy users with no company_id).
+  if (user.account_id && user.account_id === accountId) {
+    return true
+  }
+
+  // Without a company_id, scope is just user.account_id (already checked above).
+  if (!user.company_id) {
     return false
   }
 
-  // Same account is always allowed.
-  if (user.account_id === accountId) {
-    return true
-  }
-
-  // Compare company_id across the two accounts.
-  const { data: rows } = await supabase
+  // Company-scoped access: target account must share company_id with the user.
+  const { data: target } = await supabase
     .from('accounts')
-    .select('id, name, company_id')
-    .in('id', [user.account_id, accountId])
+    .select('id, company_id')
+    .eq('id', accountId)
+    .maybeSingle()
 
-  const myAccount = rows?.find((r) => r.id === user.account_id)
-  const targetAccount = rows?.find((r) => r.id === accountId)
-
-  // If either account doesn't exist, deny.
-  if (!myAccount || !targetAccount) {
-    return false
-  }
-
-  // Happy path: both have a company_id and they match.
-  if (myAccount.company_id && targetAccount.company_id) {
-    return myAccount.company_id === targetAccount.company_id
-  }
-
-  // Legacy fallback: at least one row hasn't been backfilled with a company_id.
-  // Use the old name-substring heuristic but warn so we can spot it in logs.
-  console.warn(
-    `[verifyAccountAccess] Falling back to name-substring match — missing company_id ` +
-      `(user_account=${user.account_id} company_id=${myAccount.company_id ?? 'null'}; ` +
-      `target_account=${accountId} company_id=${targetAccount.company_id ?? 'null'}). ` +
-      `Run/verify the companies backfill migration.`
-  )
-  if (!myAccount.name || !targetAccount.name) return false
-  const stripChannelSuffix = (n: string) =>
-    n.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-  return stripChannelSuffix(myAccount.name) === stripChannelSuffix(targetAccount.name)
+  if (!target) return false
+  return target.company_id === user.company_id
 }
 
 // ─── HTML Stripping ─────────────────────────────────────────────────

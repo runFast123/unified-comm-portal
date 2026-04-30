@@ -18,7 +18,20 @@ export interface AccountOverview {
   pendingCount: number
   lastMessageTime: string
 }
-export type UserRole = 'admin' | 'reviewer' | 'viewer'
+// Role model (post multi-tenancy migration):
+//   - super_admin    → cross-tenant; bypasses company scope (platform owner).
+//   - admin          → legacy; preserved for back-compat. Behaves as a
+//                      company-scoped admin going forward.
+//   - company_admin  → manage their own company.
+//   - company_member → read/write within their own company.
+//   - reviewer / viewer → legacy roles, kept for back-compat.
+export type UserRole =
+  | 'super_admin'
+  | 'admin'
+  | 'company_admin'
+  | 'company_member'
+  | 'reviewer'
+  | 'viewer'
 
 export type Category =
   | 'Sales Inquiry'
@@ -36,6 +49,23 @@ export interface Company {
   id: string
   name: string
   created_at: string
+  /** URL-safe identifier; unique when present. Used for vanity URLs. */
+  slug?: string | null
+  /** Company logo (full or relative URL). */
+  logo_url?: string | null
+  /** Hex/CSS color used to brand company-scoped UI. */
+  accent_color?: string | null
+  /** Cross-tenant cap on AI spend, summed across the company's accounts.
+   *  When set, the per-call budget gate (see `ai-usage`) considers this
+   *  in addition to per-account caps. NULL = no company-wide cap. */
+  monthly_ai_budget_usd?: number | null
+  /** Free-form per-company settings (feature flags, branding overrides, etc.) */
+  settings?: Record<string, unknown> | null
+  updated_at?: string | null
+  /** Company-wide default email signature. Markdown-style. Falls back to
+   *  null when the admin hasn't configured one. Used as the second-tier
+   *  source for `resolveSignature()` when a user has no override. */
+  default_email_signature?: string | null
 }
 
 export interface Account {
@@ -263,6 +293,15 @@ export interface User {
   created_at: string
   last_login_at: string | null
   account_id: string | null
+  /** Denormalized from `accounts.company_id` via `users_sync_company_id`
+   *  trigger. NULL for legacy super_admins not attached to any company. */
+  company_id: string | null
+  /** Per-user signature override. Wins over `companies.default_email_signature`
+   *  when set AND `email_signature_enabled` is true. */
+  email_signature?: string | null
+  /** When false, the user has explicitly opted out of having any signature
+   *  appended to their outbound emails. Defaults to true server-side. */
+  email_signature_enabled?: boolean
 }
 
 export interface ChannelConfig {

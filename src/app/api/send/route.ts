@@ -4,6 +4,7 @@ import { sendEmail, sendTeams, sendWhatsApp } from '@/lib/channel-sender'
 import { checkRateLimit } from '@/lib/api-helpers'
 import { getRequestId } from '@/lib/request-id'
 import { logError, logInfo } from '@/lib/logger'
+import { resolveSignature, appendSignatureToBody } from '@/lib/email-signature'
 
 type Channel = 'email' | 'teams' | 'whatsapp'
 
@@ -32,6 +33,14 @@ interface SendBody {
    * (immediate send) for backwards compatibility with existing callers.
    */
   delay_ms?: number
+  /**
+   * Whether to auto-append the caller's effective email signature
+   * (per-user override, or company default fallback) to the outbound
+   * email body. Email-only — ignored for Teams/WhatsApp. Defaults to
+   * true. Set false for cases like AI-generated drafts that already
+   * embedded a sign-off, or for transactional notifications.
+   */
+  append_signature?: boolean
 }
 
 const DUP_WINDOW_MS = 15_000
@@ -91,6 +100,9 @@ export async function POST(request: Request) {
     }
 
     // Idempotency: if an identical outbound message was sent in the last 15s, short-circuit.
+    // Match against the original `reply_text` here — the signature is appended
+    // later, and a re-submitted body should still dedupe even if the sig has
+    // since changed.
     const since = new Date(Date.now() - DUP_WINDOW_MS).toISOString()
     const { data: dup } = await admin
       .from('messages')
@@ -122,6 +134,31 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Email signature ────────────────────────────────────────────────
+    // For email-channel sends, append the caller's effective signature
+    // (user override -> company default) to the body unless the caller
+    // explicitly opted out via `append_signature: false`. Resolved BEFORE
+    // both the pending-send branch and the immediate-send branch so the
+    // queued reply_text already contains the sig — undo / cancel works
+    // unchanged. Skipped for non-email channels and on resolver failures.
+    let resolvedReplyText = reply_text
+    const wantSignature = channel === 'email' && body.append_signature !== false
+    if (wantSignature) {
+      try {
+        const sig = await resolveSignature(admin, user.id)
+        resolvedReplyText = appendSignatureToBody(reply_text, sig)
+      } catch (sigErr) {
+        // Signature lookup failures are non-fatal — we'd rather send the
+        // message without the sig than block the user on a misconfigured
+        // company row.
+        logError('system', 'send_signature_resolve_failed', sigErr instanceof Error ? sigErr.message : 'unknown', {
+          request_id: requestId,
+          user_id: user.id,
+          account_id,
+        })
+      }
+    }
+
     // ── Undo-Send branch ───────────────────────────────────────────────
     // When the UI passes `delay_ms > 0`, we don't actually call the
     // channel sender here. Instead we write a `pending_sends` row that
@@ -143,7 +180,9 @@ export async function POST(request: Request) {
           conversation_id,
           account_id,
           channel,
-          reply_text,
+          // Signature already appended above for email channel — store the
+          // final body so the dispatcher can send it verbatim.
+          reply_text: resolvedReplyText,
           to_address: body.to ?? null,
           subject: body.subject ?? null,
           teams_chat_id: body.teams_chat_id ?? null,
@@ -194,7 +233,9 @@ export async function POST(request: Request) {
         accountId: account_id,
         to: body.to,
         subject: body.subject || 'Re: Your inquiry',
-        body: reply_text,
+        // Signature-augmented body for email; no-op when append_signature
+        // is false or no signature is configured.
+        body: resolvedReplyText,
         attachments: attachments.length > 0
           ? attachments.map((a) => ({ path: a.path, filename: a.filename, contentType: a.contentType }))
           : undefined,

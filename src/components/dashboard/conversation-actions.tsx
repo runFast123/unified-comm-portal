@@ -118,6 +118,18 @@ export function ConversationActions({
   const [scheduledFor, setScheduledFor] = useState<string>('') // datetime-local string
   const [scheduling, setScheduling] = useState(false)
 
+  // ── Email signature toggle (email channel only) ─────────────────────
+  // Defaults ON — matches the server-side default for `append_signature`.
+  // Persisted in localStorage so we don't keep nagging an agent who
+  // turned it off intentionally. Email-only — Teams/WhatsApp ignore it.
+  const SIG_TOGGLE_KEY = 'append-signature-enabled'
+  const [appendSignature, setAppendSignature] = useState(true)
+  // Resolved signature shown inline (faded) under the textarea so the
+  // agent can see what'll be appended before sending. Loaded once per
+  // conversation; fetch is throttled to email-channel composers.
+  const [resolvedSignature, setResolvedSignature] = useState<string | null>(null)
+  const [signatureLoaded, setSignatureLoaded] = useState(false)
+
   // Outbound attachments (email-only for now). Uploaded to Supabase Storage
   // via /api/attachments/upload before the reply is sent.
   type PendingAttachment = {
@@ -289,6 +301,47 @@ export function ConversationActions({
       localStorage.setItem(SMART_COMPOSE_STORAGE_KEY, next ? 'true' : 'false')
     } catch { /* localStorage may be unavailable in private mode */ }
   }, [])
+
+  // Hydrate signature toggle from localStorage. Default ON.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = localStorage.getItem(SIG_TOGGLE_KEY)
+    if (stored === 'false') setAppendSignature(false)
+  }, [])
+
+  const persistAppendSignature = useCallback((next: boolean) => {
+    setAppendSignature(next)
+    try {
+      localStorage.setItem(SIG_TOGGLE_KEY, next ? 'true' : 'false')
+    } catch { /* localStorage may be unavailable in private mode */ }
+  }, [])
+
+  // Lazy-load the resolved signature so the inline preview matches what the
+  // server will append. Only runs for email channels with the composer open
+  // — saves a roundtrip for Teams/WhatsApp tabs that don't use it.
+  useEffect(() => {
+    if (channel !== 'email') return
+    if (!showManualReply) return
+    if (signatureLoaded) return
+    let cancelled = false
+    fetch('/api/users/signature')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled) return
+        if (json && typeof json.resolved === 'string') {
+          setResolvedSignature(json.resolved)
+        } else {
+          setResolvedSignature(null)
+        }
+        setSignatureLoaded(true)
+      })
+      .catch(() => {
+        if (!cancelled) setSignatureLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [channel, showManualReply, signatureLoaded])
 
   const {
     suggestion: smartSuggestion,
@@ -828,6 +881,10 @@ export function ConversationActions({
         attachments: attachmentsSnapshot.length > 0
           ? attachmentsSnapshot.map((a) => ({ path: a.path, filename: a.filename, contentType: a.contentType }))
           : undefined,
+        // Email-only — server ignores this for other channels. Defaults to
+        // true on the server; we forward the agent's local toggle so the
+        // setting matches what they see in the inline preview.
+        append_signature: isEmailChannel ? appendSignature : undefined,
       },
       {
         onConfirmed: async () => {
@@ -845,7 +902,7 @@ export function ConversationActions({
         },
       }
     )
-  }, [manualText, conversationId, accountId, channel, participantEmail, router, toast, emailSubject, teamsChatId, markWaitingOnCustomer, clearDraft, serverUndoableSend, isEmailChannel, attachmentsForSend, pendingAttachments.length])
+  }, [manualText, conversationId, accountId, channel, participantEmail, router, toast, emailSubject, teamsChatId, markWaitingOnCustomer, clearDraft, serverUndoableSend, isEmailChannel, attachmentsForSend, pendingAttachments.length, appendSignature])
 
   // ── Collision guard ─────────────────────────────────────────────────
   // If another agent is actively typing in this conversation, ask for a
@@ -1407,6 +1464,30 @@ export function ConversationActions({
           {/* Pending attachment chips */}
           <AttachmentChips />
 
+          {/* Inline signature preview — email channel only. Faded so the
+              agent knows it's auto-appended at send time, not part of the
+              text they're editing. Hidden when the user has the toggle
+              off OR the resolver returned null (no signature configured). */}
+          {isEmailChannel && appendSignature && resolvedSignature && (
+            <div className="rounded-md border border-dashed border-gray-200 bg-white px-3 py-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] uppercase tracking-wider text-gray-400">
+                  Signature (will be appended)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => persistAppendSignature(false)}
+                  className="text-[10px] text-gray-400 hover:text-gray-600 underline"
+                >
+                  hide
+                </button>
+              </div>
+              <pre className="whitespace-pre-wrap font-sans text-xs text-gray-400 italic">
+                {resolvedSignature}
+              </pre>
+            </div>
+          )}
+
           <div className="flex gap-2 justify-end items-center">
             {isEmailChannel ? (
               <button
@@ -1428,6 +1509,33 @@ export function ConversationActions({
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 ring-1 ring-gray-200 bg-white cursor-not-allowed"
               >
                 <Paperclip size={14} />
+              </button>
+            )}
+            {/* Email-only "Include signature" toggle. Tiny chip-style button
+                so it doesn't compete with the primary Send action. Hidden
+                when no signature is configured for this user/company —
+                showing an off-only toggle would be confusing. */}
+            {isEmailChannel && (resolvedSignature !== null || !signatureLoaded) && (
+              <button
+                type="button"
+                onClick={() => persistAppendSignature(!appendSignature)}
+                title={
+                  resolvedSignature === null
+                    ? 'No signature configured — set one in Account → Signature'
+                    : appendSignature
+                      ? 'Signature will be appended on send'
+                      : 'Signature is OFF — click to include it'
+                }
+                disabled={resolvedSignature === null}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium ring-1 transition-colors disabled:opacity-50 ${
+                  appendSignature && resolvedSignature !== null
+                    ? 'bg-teal-50 text-teal-700 ring-teal-200 hover:bg-teal-100'
+                    : 'bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100'
+                }`}
+                aria-pressed={appendSignature}
+              >
+                <FileText size={11} />
+                {appendSignature ? 'Signature on' : 'Signature off'}
               </button>
             )}
             <Button size="sm" variant="ghost" onClick={() => { setShowManualReply(false); setShortcutQuery(null) }}>

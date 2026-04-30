@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { NotificationCenter } from '@/components/dashboard/notification-center'
+import { MentionsBell } from '@/components/dashboard/mentions-bell'
 import { GlobalSearch } from '@/components/dashboard/global-search'
 import { CommandPalette } from '@/components/ui/command-palette'
 import { KeyboardShortcuts } from '@/components/ui/keyboard-shortcuts'
@@ -224,6 +225,7 @@ export function DashboardShell({ user, pendingCount, companyAccountIds, children
             {currentPage}
           </span>
           <div className="flex-1" />
+          <MentionsBell />
           <NotificationCenter />
           <GlobalSearch variant="mobile" />
           <button
@@ -261,6 +263,7 @@ export function DashboardShell({ user, pendingCount, companyAccountIds, children
             ))}
           </nav>
           <div className="flex items-center gap-3">
+            <MentionsBell />
             <NotificationCenter />
             {/* Global Search */}
             <GlobalSearch />

@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
+import { isSuperAdmin } from '@/lib/auth'
 
 /**
  * GET /api/user-accounts
  * Returns the sibling account IDs for the current authenticated user's company.
  *
- * New behavior: groups via `accounts.company_id` (the proper FK) instead of
- * the brittle name-substring match. Falls back to name-stripping with a
- * `console.warn` only if the user's row hasn't been backfilled.
+ * Groups via `accounts.company_id` (the proper FK). The old name-substring
+ * fallback is gone — every account has a company_id post-migration. If a row
+ * is somehow missing one, the user just sees only their own account, which
+ * is the safe deny-by-default outcome.
  */
 export async function GET() {
   try {
@@ -22,74 +24,41 @@ export async function GET() {
     // Get user profile
     const { data: profile } = await supabase
       .from('users')
-      .select('role, account_id')
+      .select('role, account_id, company_id')
       .eq('id', user.id)
       .maybeSingle()
 
-    // Admins (or users with no account) get the admin-style empty payload.
-    if (!profile?.account_id || profile.role === 'admin') {
-      return NextResponse.json({ accountIds: [], isAdmin: profile?.role === 'admin' })
+    // super_admin gets the admin-style empty payload (cross-tenant — UI shows
+    // all accounts and queries are not scoped). Legacy 'admin' on a row with
+    // no company is also treated this way for back-compat.
+    if (isSuperAdmin(profile?.role) || (!profile?.account_id && !profile?.company_id)) {
+      return NextResponse.json({
+        accountIds: [],
+        isAdmin: !!profile?.role && (profile.role === 'super_admin' || profile.role === 'admin'),
+      })
     }
 
-    // Use service role to bypass RLS so we can resolve the user's siblings
-    // even when their RLS policy hides other-channel rows.
     const service = await createServiceRoleClient()
 
-    const { data: myAccount } = await service
-      .from('accounts')
-      .select('id, name, company_id')
-      .eq('id', profile.account_id)
-      .maybeSingle()
-
-    if (!myAccount) {
-      return NextResponse.json({ accountIds: [profile.account_id] })
-    }
-
-    // Happy path: company_id present → simple FK query.
-    if (myAccount.company_id) {
+    if (profile?.company_id) {
       const { data: siblings } = await service
         .from('accounts')
         .select('*')
-        .eq('company_id', myAccount.company_id)
+        .eq('company_id', profile.company_id)
         .eq('is_active', true)
         .order('name')
 
       const ids = (siblings ?? []).map((a) => a.id as string)
       return NextResponse.json({
-        accountIds: ids.length > 0 ? ids : [profile.account_id],
+        accountIds: ids.length > 0 ? ids : (profile.account_id ? [profile.account_id] : []),
         accounts: siblings ?? [],
       })
     }
 
-    // Legacy fallback — user's account has no company_id yet. Warn and fall
-    // back to the old name-substring heuristic so we don't break legacy users.
-    console.warn(
-      `[user-accounts] Falling back to name-substring match — account ${profile.account_id} ` +
-        `has no company_id. Run/verify the companies backfill migration.`
-    )
-
-    const { data: allAccounts } = await service
-      .from('accounts')
-      .select('*')
-      .eq('is_active', true)
-      .order('name')
-
-    if (!allAccounts) {
-      return NextResponse.json({ accountIds: [profile.account_id] })
-    }
-
-    const stripChannelSuffix = (n: string) =>
-      n.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-    const baseName = stripChannelSuffix(myAccount.name as string)
-
-    const siblingAccounts = allAccounts.filter(
-      (a) => stripChannelSuffix(a.name as string) === baseName
-    )
-    const siblingIds = siblingAccounts.map((a) => a.id as string)
-
+    // No company — fall back to the user's single account if any.
     return NextResponse.json({
-      accountIds: siblingIds.length > 0 ? siblingIds : [profile.account_id],
-      accounts: siblingAccounts,
+      accountIds: profile?.account_id ? [profile.account_id] : [],
+      accounts: [],
     })
   } catch (err) {
     console.error('[user-accounts] Error:', err)

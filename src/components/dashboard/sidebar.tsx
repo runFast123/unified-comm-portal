@@ -60,6 +60,7 @@ const adminNavItems = [
   { label: 'Integrations', href: '/admin/integrations', icon: KeyRound },
   { label: 'AI Settings', href: '/admin/ai-settings', icon: Brain },
   { label: 'Notifications', href: '/admin/notifications', icon: Bell },
+  { label: 'Company Signatures', href: '/admin/company-signatures', icon: FileText },
   { label: 'System Health', href: '/admin/health', icon: Activity },
   { label: 'System Logs', href: '/admin/logs', icon: FileText },
   { label: 'Users', href: '/admin/users', icon: UserCog },
@@ -389,6 +390,24 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
               </div>
             )}
           </div>
+          {/* Per-user signature settings — sits above Sign out so it's
+              visible without requiring admin role. Hidden on the collapsed
+              rail to keep the bottom area tidy. */}
+          {!collapsed && (
+            <Link
+              href="/account/signature"
+              onClick={onClose}
+              className={`mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                pathname === '/account/signature'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              }`}
+              title="Manage your email signature"
+            >
+              <FileText className="h-4 w-4 shrink-0" />
+              <span>My signature</span>
+            </Link>
+          )}
           <form action={signOut}>
             <button
               type="submit"
