@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Archive, AlertTriangle, CheckCheck, Sparkles } from 'lucide-react'
+import { Archive, AlertTriangle, CheckCheck, Sparkles, Clock } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { isUnread } from '@/hooks/useReadStatus'
 import { ChannelIcon } from '@/components/ui/channel-icon'
@@ -236,6 +236,22 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
   const accountName = item.account_name || ''
   const unread = isUnread(item.conversation_id, item.timestamp)
 
+  // ── Snooze indicator ────────────────────────────────────────────────
+  // `snoozed_until` is surfaced from conversations on the InboxItem. We only
+  // render the badge when the snooze is still in the future — after that the
+  // wake-snoozed cron will null the column out, but we guard here too so we
+  // don't briefly show a stale "Snoozed until …" between cron ticks.
+  const snoozedUntilIso = item.snoozed_until ?? null
+  const snoozedActive = !!snoozedUntilIso && new Date(snoozedUntilIso).getTime() > Date.now()
+  const snoozedLabel = snoozedActive
+    ? new Date(snoozedUntilIso!).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : ''
+
   return (
     <div
       onClick={handleRowClick}
@@ -305,6 +321,17 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
 
       {/* Right section — compact info */}
       <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Snoozed badge — only when the snooze is still active */}
+        {snoozedActive && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
+            title={`Snoozed until ${snoozedLabel} — auto-resurfaces when due`}
+          >
+            <Clock className="h-2.5 w-2.5" />
+            <span className="hidden md:inline">Snoozed until {snoozedLabel}</span>
+            <span className="md:hidden">Snoozed</span>
+          </span>
+        )}
         {/* Category */}
         <div className="hidden lg:block">
           {item.category && (

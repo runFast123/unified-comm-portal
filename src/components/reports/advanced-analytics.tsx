@@ -16,6 +16,13 @@ import {
   TrendingUp,
   Mail,
   Loader2,
+  Activity,
+  Filter,
+  BarChart3,
+  Gauge,
+  CalendarClock,
+  ListChecks,
+  UserCheck,
 } from 'lucide-react'
 
 // ─── Shared Types ────────────────────────────────────────────────────────────
@@ -63,7 +70,7 @@ interface EscalatedConv {
 function DonutChart({ segments, size = 140 }: { segments: { label: string; value: number; color: string }[]; size?: number }) {
   const total = segments.reduce((s, seg) => s + seg.value, 0)
   if (total === 0) return <p className="text-sm text-gray-400 text-center py-4">No data</p>
-  const strokeW = 16
+  const strokeW = 14
   const radius = size / 2 - strokeW / 2 - 4
   const circumference = 2 * Math.PI * radius
   let offset = 0
@@ -86,20 +93,23 @@ function DonutChart({ segments, size = 140 }: { segments: { label: string; value
               cx={size/2} cy={size/2} r={radius}
               fill="none" stroke={seg.color} strokeWidth={strokeW}
               strokeDasharray={`${dash} ${gap}`}
+              strokeLinecap="round"
               transform={`rotate(${rot} ${size/2} ${size/2})`}
               className="transition-all duration-500"
             />
           )
         })}
-        <text x={size/2} y={size/2 - 6} textAnchor="middle" dominantBaseline="central" className={`fill-gray-900 ${fontSize} font-bold`}>{total}</text>
-        <text x={size/2} y={size/2 + 12} textAnchor="middle" dominantBaseline="central" className="fill-gray-400 text-[10px]">total</text>
+        <text x={size/2} y={size/2 - 6} textAnchor="middle" dominantBaseline="central" className={`fill-gray-900 ${fontSize} font-semibold tabular-nums tracking-tight`}>{total}</text>
+        <text x={size/2} y={size/2 + 14} textAnchor="middle" dominantBaseline="central" className="fill-gray-500 text-[10px] font-semibold uppercase tracking-wider">total</text>
       </svg>
-      <div className="space-y-1 flex-1 min-w-0">
+      <div className="space-y-1.5 flex-1 min-w-0 w-full">
         {segments.filter(s => s.value > 0).map((seg, i) => (
           <div key={i} className="flex items-center gap-2 text-sm">
-            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
+            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
             <span className="text-gray-600 truncate text-xs">{seg.label}</span>
-            <span className="font-semibold text-gray-900 ml-auto text-xs whitespace-nowrap">{seg.value} <span className="text-gray-400 font-normal">({Math.round((seg.value / total) * 100)}%)</span></span>
+            <span className="font-semibold tabular-nums tracking-tight text-gray-900 ml-auto text-xs whitespace-nowrap">
+              {seg.value} <span className="text-gray-400 font-normal">({Math.round((seg.value / total) * 100)}%)</span>
+            </span>
           </div>
         ))}
       </div>
@@ -114,9 +124,9 @@ function FunnelChart({ data }: { data: AiFunnel }) {
     { label: 'Generated', value: data.pending_approval + data.approved + data.sent + data.rejected + data.edited + data.auto_sent, color: 'bg-blue-500' },
     { label: 'Pending Review', value: data.pending_approval, color: 'bg-amber-500' },
     { label: 'Approved', value: data.approved + data.sent + data.auto_sent, color: 'bg-teal-500' },
-    { label: 'Sent', value: data.sent + data.auto_sent, color: 'bg-green-500' },
+    { label: 'Sent', value: data.sent + data.auto_sent, color: 'bg-emerald-500' },
     { label: 'Rejected', value: data.rejected, color: 'bg-red-400' },
-    { label: 'Edited', value: data.edited, color: 'bg-purple-400' },
+    { label: 'Edited', value: data.edited, color: 'bg-violet-400' },
   ]
   const maxVal = Math.max(...steps.map(s => s.value), 1)
 
@@ -124,13 +134,13 @@ function FunnelChart({ data }: { data: AiFunnel }) {
     <div className="space-y-2">
       {steps.map((step, i) => (
         <div key={i} className="flex items-center gap-3">
-          <span className="text-xs text-gray-500 w-28 text-right shrink-0">{step.label}</span>
-          <div className="flex-1 h-7 bg-gray-100 rounded-lg overflow-hidden relative">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-28 text-right shrink-0">{step.label}</span>
+          <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden relative">
             <div
-              className={cn('h-full rounded-lg transition-all duration-500', step.color)}
+              className={cn('h-full rounded-full transition-all duration-500', step.color)}
               style={{ width: `${Math.max((step.value / maxVal) * 100, 2)}%` }}
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-700">{step.value}</span>
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold tabular-nums tracking-tight text-gray-800">{step.value}</span>
           </div>
         </div>
       ))}
@@ -144,23 +154,23 @@ function HorizontalBars({ items, colorFn }: { items: { label: string; value: num
   const maxVal = Math.max(...items.map(i => i.value), 1)
   const defaultColors: Record<string, string> = {
     newsletter: 'bg-amber-400', marketing: 'bg-orange-400', automated_notification: 'bg-blue-400',
-    spam: 'bg-red-400', ai_classified_newsletter: 'bg-purple-400',
+    spam: 'bg-red-400', ai_classified_newsletter: 'bg-violet-400',
     low: 'bg-gray-400', medium: 'bg-amber-400', high: 'bg-orange-500', urgent: 'bg-red-500',
-    active: 'bg-green-500', resolved: 'bg-teal-500', escalated: 'bg-red-500',
+    active: 'bg-emerald-500', resolved: 'bg-teal-500', escalated: 'bg-red-500',
     in_progress: 'bg-blue-500', waiting_on_customer: 'bg-amber-500', archived: 'bg-gray-400',
   }
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-3">
-          <span className="text-xs text-gray-600 w-36 text-right shrink-0 truncate capitalize">{item.label.replace(/_/g, ' ')}</span>
-          <div className="flex-1 h-6 bg-gray-100 rounded overflow-hidden relative">
+          <span className="text-xs font-medium text-gray-700 w-36 text-right shrink-0 truncate capitalize">{item.label.replace(/_/g, ' ')}</span>
+          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden relative">
             <div
-              className={cn('h-full rounded transition-all', colorFn ? colorFn(item.label) : (defaultColors[item.label] || 'bg-teal-500'))}
+              className={cn('h-full rounded-full transition-all', colorFn ? colorFn(item.label) : (defaultColors[item.label] || 'bg-teal-500'))}
               style={{ width: `${Math.max((item.value / maxVal) * 100, 3)}%` }}
             />
           </div>
-          <span className="text-xs font-semibold text-gray-700 w-10 text-right">{item.value}</span>
+          <span className="text-xs font-semibold tabular-nums tracking-tight text-gray-700 w-10 text-right">{item.value}</span>
         </div>
       ))}
       {items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No data</p>}
@@ -170,17 +180,36 @@ function HorizontalBars({ items, colorFn }: { items: { label: string; value: num
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
+/** Maps legacy solid 'bg-<color>-500' prop to soft chip palette.
+ *  Preserves the `color` API for callers while rendering in the new aesthetic. */
+const STAT_CHIP_PALETTE: Record<string, { bg: string; text: string; ring: string }> = {
+  'bg-red-500':     { bg: 'bg-red-50',     text: 'text-red-700',     ring: 'ring-red-200' },
+  'bg-red-400':     { bg: 'bg-red-50',     text: 'text-red-600',     ring: 'ring-red-200' },
+  'bg-green-500':   { bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200' },
+  'bg-emerald-500': { bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200' },
+  'bg-amber-500':   { bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'ring-amber-200' },
+  'bg-amber-400':   { bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'ring-amber-200' },
+  'bg-orange-500':  { bg: 'bg-orange-50',  text: 'text-orange-700',  ring: 'ring-orange-200' },
+  'bg-blue-500':    { bg: 'bg-blue-50',    text: 'text-blue-700',    ring: 'ring-blue-200' },
+  'bg-teal-500':    { bg: 'bg-teal-50',    text: 'text-teal-700',    ring: 'ring-teal-200' },
+  'bg-teal-600':    { bg: 'bg-teal-50',    text: 'text-teal-700',    ring: 'ring-teal-200' },
+  'bg-purple-500':  { bg: 'bg-violet-50',  text: 'text-violet-700',  ring: 'ring-violet-200' },
+  'bg-violet-500':  { bg: 'bg-violet-50',  text: 'text-violet-700',  ring: 'ring-violet-200' },
+  'bg-gray-500':    { bg: 'bg-gray-100',   text: 'text-gray-700',    ring: 'ring-gray-200' },
+}
+
 function StatCard({ label, value, subtitle, icon: Icon, color }: { label: string; value: string | number; subtitle?: string; icon: React.ElementType; color: string }) {
+  const chip = STAT_CHIP_PALETTE[color] || STAT_CHIP_PALETTE['bg-teal-500']
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+    <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
       <div className="flex items-center gap-3">
-        <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg shrink-0', color)}>
-          <Icon className="h-5 w-5 text-white" />
+        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1', chip.bg, chip.text, chip.ring)}>
+          <Icon className="h-4.5 w-4.5" strokeWidth={2} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-medium text-gray-500 truncate">{label}</p>
-          <p className="text-xl font-bold text-gray-900 leading-tight">{value}</p>
-          {subtitle && <p className="text-[10px] text-gray-400 truncate">{subtitle}</p>}
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 truncate">{label}</p>
+          <p className="text-xl font-semibold leading-tight tabular-nums tracking-tight text-gray-900">{value}</p>
+          {subtitle && <p className="text-[11px] text-gray-500 truncate">{subtitle}</p>}
         </div>
       </div>
     </div>
@@ -240,23 +269,23 @@ export function OverviewEnhancements({ dateStart }: { dateStart: string }) {
   if (loading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <ReportCard title="Conversation Health" description="Current status of all conversations">
+    <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+      <ReportCard title="Conversation Health" description="Current status of all conversations" icon={Activity} accent="teal">
         <DonutChart segments={[
-          { label: 'Active', value: convHealth.active, color: '#22c55e' },
+          { label: 'Active', value: convHealth.active, color: '#10b981' },
           { label: 'In Progress', value: convHealth.in_progress, color: '#3b82f6' },
           { label: 'Waiting on Customer', value: convHealth.waiting_on_customer, color: '#f59e0b' },
-          { label: 'Resolved', value: convHealth.resolved, color: '#14b8a6' },
+          { label: 'Resolved', value: convHealth.resolved, color: '#0d9488' },
           { label: 'Escalated', value: convHealth.escalated, color: '#ef4444' },
           { label: 'Archived', value: convHealth.archived, color: '#9ca3af' },
         ]} />
       </ReportCard>
 
-      <ReportCard title="Spam Detection" description={`${totalSpam} spam vs ${totalReal} real messages this period`}>
+      <ReportCard title="Spam Detection" description={`${totalSpam} spam vs ${totalReal} real messages this period`} icon={Filter} accent="red">
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <StatCard label="Spam Caught" value={totalSpam} icon={ShieldAlert} color="bg-red-500" />
-            <StatCard label="Real Messages" value={totalReal} icon={CheckCircle} color="bg-green-500" />
+            <StatCard label="Real Messages" value={totalReal} icon={CheckCircle} color="bg-emerald-500" />
             <StatCard label="Catch Rate" value={totalReal + totalSpam > 0 ? `${Math.round((totalSpam / (totalReal + totalSpam)) * 100)}%` : '0%'} icon={Shield} color="bg-teal-600" />
           </div>
           <HorizontalBars items={spamBreakdown.map(s => ({ label: s.reason, value: s.count }))} />
@@ -318,32 +347,32 @@ export function AIPerformanceEnhancements({ dateStart }: { dateStart: string }) 
   if (loading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
 
   return (
-    <>
+    <div className="space-y-6">
     {/* KPI row */}
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      <StatCard label="Total AI Replies" value={totalReplies} icon={MessageCircle} color="bg-purple-500" />
-      <StatCard label="Avg Confidence" value={`${avgConfidence}%`} subtitle={avgConfidence >= 70 ? 'Good' : 'Needs KB improvement'} icon={CheckCircle} color={avgConfidence >= 70 ? 'bg-green-500' : 'bg-amber-500'} />
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-5">
+      <StatCard label="Total AI Replies" value={totalReplies} icon={MessageCircle} color="bg-violet-500" />
+      <StatCard label="Avg Confidence" value={`${avgConfidence}%`} subtitle={avgConfidence >= 70 ? 'Good' : 'Needs KB improvement'} icon={CheckCircle} color={avgConfidence >= 70 ? 'bg-emerald-500' : 'bg-amber-500'} />
       <StatCard label="Edit Rate" value={totalReplies > 0 ? `${Math.round((editedCount / totalReplies) * 100)}%` : '0%'} subtitle={`${editedCount} edited`} icon={AlertTriangle} color={editedCount > totalReplies * 0.3 ? 'bg-red-500' : 'bg-teal-500'} />
       <StatCard label="Auto-Sent" value={funnel.auto_sent + funnel.sent} subtitle="Approved + sent" icon={Shield} color="bg-blue-500" />
     </div>
 
     {/* Funnel */}
-    <ReportCard title="AI Reply Outcome Funnel" description="How AI-generated drafts progress through the review pipeline">
+    <ReportCard title="AI Reply Outcome Funnel" description="How AI-generated drafts progress through the review pipeline" icon={ListChecks} accent="teal">
       <FunnelChart data={funnel} />
     </ReportCard>
 
     {/* Confidence Distribution */}
-    <ReportCard title="AI Confidence Distribution" description="How confident the AI is in its generated replies">
-      <div className="space-y-2">
+    <ReportCard title="AI Confidence Distribution" description="How confident the AI is in its generated replies" icon={Gauge} accent="purple">
+      <div className="space-y-2.5">
         {confidenceDistribution.map((b, i) => {
           const maxCount = Math.max(...confidenceDistribution.map(x => x.count), 1)
           return (
             <div key={i} className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-16 text-right shrink-0">{b.range}</span>
-              <div className="flex-1 h-6 bg-gray-100 rounded overflow-hidden relative">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-16 text-right shrink-0 tabular-nums">{b.range}</span>
+              <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden relative">
                 <div
-                  className={cn('h-full rounded transition-all',
-                    b.range === '80-100%' ? 'bg-green-500' :
+                  className={cn('h-full rounded-full transition-all',
+                    b.range === '80-100%' ? 'bg-emerald-500' :
                     b.range === '60-80%' ? 'bg-teal-500' :
                     b.range === '40-60%' ? 'bg-amber-500' :
                     'bg-red-400'
@@ -351,13 +380,13 @@ export function AIPerformanceEnhancements({ dateStart }: { dateStart: string }) 
                   style={{ width: `${Math.max((b.count / maxCount) * 100, 3)}%` }}
                 />
               </div>
-              <span className="text-xs font-semibold text-gray-700 w-8 text-right">{b.count}</span>
+              <span className="text-xs font-semibold tabular-nums tracking-tight text-gray-700 w-8 text-right">{b.count}</span>
             </div>
           )
         })}
       </div>
     </ReportCard>
-    </>
+    </div>
   )
 }
 
@@ -402,8 +431,8 @@ export function TrendsEnhancements() {
   if (loading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
 
   return (
-    <ReportCard title="Spam vs Real Customer Messages (30 Days)" description="Daily breakdown of filtered spam vs legitimate messages">
-      <div className="space-y-1">
+    <ReportCard title="Spam vs Real Customer Messages (30 Days)" description="Daily breakdown of filtered spam vs legitimate messages" icon={Filter} accent="red">
+      <div className="space-y-2">
         <div className="flex items-end gap-0.5" style={{ height: 140 }}>
           {spamTrend.map((d, i) => {
             const total = d.spam + d.real
@@ -412,23 +441,23 @@ export function TrendsEnhancements() {
             const spamPct = total > 0 ? (d.spam / total) * 100 : 0
             return (
               <div key={i} className="flex-1 flex flex-col group relative" style={{ height: `${pct}%` }}>
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-800 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10">
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-900 text-white text-[10px] px-1.5 py-0.5 rounded-md whitespace-nowrap z-10 tabular-nums shadow-md">
                   {d.real} real, {d.spam} spam
                 </div>
-                <div className="bg-red-400 rounded-t" style={{ height: `${spamPct}%`, minHeight: d.spam > 0 ? 2 : 0 }} />
-                <div className="bg-teal-500 flex-1 rounded-b" />
+                <div className="bg-red-400 rounded-t-sm" style={{ height: `${spamPct}%`, minHeight: d.spam > 0 ? 2 : 0 }} />
+                <div className="bg-teal-500 flex-1 rounded-b-sm" />
               </div>
             )
           })}
         </div>
-        <div className="flex justify-between text-[10px] text-gray-400 px-0.5">
+        <div className="flex justify-between text-[10px] tabular-nums text-gray-400 px-0.5">
           <span>{spamTrend[0]?.date?.slice(5)}</span>
           <span>{spamTrend[14]?.date?.slice(5)}</span>
           <span>{spamTrend[29]?.date?.slice(5)}</span>
         </div>
-        <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-teal-500" /> Real</span>
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-red-400" /> Spam</span>
+        <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-teal-500" /> Real</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-400" /> Spam</span>
         </div>
       </div>
     </ReportCard>
@@ -516,9 +545,9 @@ export function ConversationsTab() {
   return (
     <div className="space-y-6">
       {/* KPI row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-5">
         {[
-          { label: 'Active', value: convHealth.active, color: 'bg-green-500', icon: MessageCircle },
+          { label: 'Active', value: convHealth.active, color: 'bg-emerald-500', icon: MessageCircle },
           { label: 'In Progress', value: convHealth.in_progress, color: 'bg-blue-500', icon: Clock },
           { label: 'Waiting', value: convHealth.waiting_on_customer, color: 'bg-amber-500', icon: Clock },
           { label: 'Resolved', value: convHealth.resolved, color: 'bg-teal-500', icon: CheckCircle },
@@ -529,24 +558,28 @@ export function ConversationsTab() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
         {/* Priority Distribution */}
-        <ReportCard title="Priority Distribution" description="Conversation priorities across all channels">
+        <ReportCard title="Priority Distribution" description="Conversation priorities across all channels" icon={BarChart3} accent="amber">
           <HorizontalBars items={priorityDist} />
         </ReportCard>
 
         {/* Avg Resolution Time */}
-        <ReportCard title="Avg Resolution Time by Channel" description="Time from first message to resolved">
+        <ReportCard title="Avg Resolution Time by Channel" description="Time from first message to resolved" icon={CalendarClock} accent="indigo">
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-xl border border-gray-200 p-4 text-center">
-              <Mail className="h-6 w-6 mx-auto text-red-500 mb-2" />
-              <p className="text-2xl font-bold text-gray-900">{avgResolution.email}</p>
-              <p className="text-xs text-gray-500 mt-1">Email</p>
+            <div className="rounded-xl border border-gray-200/80 bg-white p-4 text-center">
+              <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+                <Mail className="h-4 w-4" strokeWidth={2} />
+              </div>
+              <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{avgResolution.email}</p>
+              <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Email</p>
             </div>
-            <div className="rounded-xl border border-gray-200 p-4 text-center">
-              <MessageCircle className="h-6 w-6 mx-auto text-indigo-500 mb-2" />
-              <p className="text-2xl font-bold text-gray-900">{avgResolution.teams}</p>
-              <p className="text-xs text-gray-500 mt-1">Teams</p>
+            <div className="rounded-xl border border-gray-200/80 bg-white p-4 text-center">
+              <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-700 ring-1 ring-violet-200">
+                <MessageCircle className="h-4 w-4" strokeWidth={2} />
+              </div>
+              <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{avgResolution.teams}</p>
+              <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Teams</p>
             </div>
           </div>
         </ReportCard>
@@ -554,15 +587,15 @@ export function ConversationsTab() {
 
       {/* Escalated Conversations */}
       {escalated.length > 0 && (
-        <ReportCard title={`Escalated Conversations (${escalated.length})`} description="Conversations requiring urgent attention">
+        <ReportCard title={`Escalated Conversations (${escalated.length})`} description="Conversations requiring urgent attention" icon={AlertTriangle} accent="red">
           <div className="divide-y divide-gray-100">
             {escalated.map(c => (
-              <a key={c.id} href={`/conversations/${c.id}`} className="flex items-center gap-3 py-2.5 hover:bg-gray-50 px-2 -mx-2 rounded transition-colors">
-                <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', c.priority === 'urgent' ? 'bg-red-500' : 'bg-orange-400')} />
+              <a key={c.id} href={`/conversations/${c.id}`} className="flex items-center gap-3 py-2.5 hover:bg-gray-50/60 px-2 -mx-2 rounded-lg transition-colors">
+                <span className={cn('h-2 w-2 rounded-full shrink-0', c.priority === 'urgent' ? 'bg-red-500' : 'bg-orange-400')} />
                 <span className="text-sm font-medium text-gray-800 flex-1 truncate">{c.participant_name || 'Unknown'}</span>
-                <span className="text-xs text-gray-500">{c.account_name.replace(/\s+Teams$/i, '')}</span>
+                <span className="text-xs text-gray-500 truncate max-w-[160px]">{c.account_name.replace(/\s+Teams$/i, '')}</span>
                 <Badge variant={c.channel === 'teams' ? 'info' : 'default'} size="sm">{c.channel}</Badge>
-                <span className="text-xs text-gray-400">{c.last_message_at ? timeAgo(c.last_message_at) : '--'}</span>
+                <span className="text-[11px] tabular-nums text-gray-400 whitespace-nowrap">{c.last_message_at ? timeAgo(c.last_message_at) : '--'}</span>
               </a>
             ))}
           </div>
@@ -571,29 +604,37 @@ export function ConversationsTab() {
 
       {/* Agent Workload */}
       {agents.length > 0 && (
-        <ReportCard title="Agent Workload" description="Conversations assigned per agent">
-          <div className="divide-y divide-gray-100">
-            <div className="grid grid-cols-3 py-2 text-xs font-semibold text-gray-500 uppercase">
-              <span>Agent</span>
-              <span className="text-center">Total Assigned</span>
-              <span className="text-center">Active/Escalated</span>
-            </div>
-            {agents.map((a, i) => (
-              <div key={i} className="grid grid-cols-3 py-2.5 text-sm">
-                <span className="font-medium text-gray-800 flex items-center gap-2">
-                  <Users className="h-4 w-4 text-gray-400" />
-                  {a.name}
-                </span>
-                <span className="text-center text-gray-600">{a.conversations}</span>
-                <span className="text-center">
-                  {a.pending > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-orange-600 font-semibold">{a.pending}</span>
-                  ) : (
-                    <span className="text-gray-400">0</span>
-                  )}
-                </span>
-              </div>
-            ))}
+        <ReportCard title="Agent Workload" description="Conversations assigned per agent" icon={UserCheck} accent="indigo">
+          <div className="-mx-6 -my-5 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50/50">
+                <tr className="border-y border-gray-100">
+                  <th className="px-6 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Agent</th>
+                  <th className="px-6 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">Total Assigned</th>
+                  <th className="px-6 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">Active / Escalated</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {agents.map((a, i) => (
+                  <tr key={i} className="transition-colors hover:bg-gray-50/60">
+                    <td className="px-6 py-3 text-sm font-medium text-gray-800">
+                      <span className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-gray-400" strokeWidth={2} />
+                        {a.name}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-right text-sm font-semibold tabular-nums tracking-tight text-gray-700">{a.conversations}</td>
+                    <td className="px-6 py-3 text-right">
+                      {a.pending > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-orange-700 ring-1 ring-orange-200">{a.pending}</span>
+                      ) : (
+                        <span className="text-xs tabular-nums text-gray-400">0</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </ReportCard>
       )}
@@ -654,19 +695,19 @@ export function SpamFiltersTab({ dateStart }: { dateStart: string }) {
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-5">
         <StatCard label="Total Spam Filtered" value={totalSpam} icon={ShieldAlert} color="bg-red-500" />
         <StatCard label="Rule-Based Catches" value={ruleBasedCount} subtitle="Sender/subject/body patterns" icon={Shield} color="bg-amber-500" />
-        <StatCard label="AI Detected" value={aiDetectedCount} subtitle="Newsletter/Marketing by AI" icon={TrendingUp} color="bg-purple-500" />
+        <StatCard label="AI Detected" value={aiDetectedCount} subtitle="Newsletter/Marketing by AI" icon={TrendingUp} color="bg-violet-500" />
         <StatCard label="Detection Split" value={totalSpam > 0 ? `${Math.round((ruleBasedCount / totalSpam) * 100)}% rules` : '--'} subtitle={totalSpam > 0 ? `${Math.round((aiDetectedCount / totalSpam) * 100)}% AI` : ''} icon={CheckCircle} color="bg-teal-600" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ReportCard title="Spam by Reason" description="What triggered the spam filter">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+        <ReportCard title="Spam by Reason" description="What triggered the spam filter" icon={Filter} accent="red">
           <HorizontalBars items={spamByReason} />
         </ReportCard>
 
-        <ReportCard title="Spam by Account" description="Which accounts receive the most spam">
+        <ReportCard title="Spam by Account" description="Which accounts receive the most spam" icon={Users} accent="amber">
           <HorizontalBars items={spamByAccount} colorFn={() => 'bg-red-400'} />
         </ReportCard>
       </div>

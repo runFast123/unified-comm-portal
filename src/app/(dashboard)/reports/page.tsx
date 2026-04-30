@@ -8,7 +8,6 @@ import {
   Bot,
   FileSpreadsheet,
   TrendingUp,
-  TrendingDown,
   CheckCircle2,
   PenLine,
   Send,
@@ -19,6 +18,13 @@ import {
   Download,
   ArrowUpDown,
   FileText,
+  Clock,
+  Flame,
+  ArrowUpRight,
+  ArrowDownRight,
+  Activity,
+  Zap,
+  AlertTriangle,
 } from 'lucide-react'
 import { ReportCard } from '@/components/reports/report-card'
 import { DateRangePicker, type DateRange } from '@/components/reports/date-range-picker'
@@ -42,6 +48,7 @@ import {
   SpamFiltersTab,
 } from '@/components/reports/advanced-analytics'
 import { MessageSquare, ShieldAlert, Smile } from 'lucide-react'
+import { Skeleton, SkeletonCard } from '@/components/ui/skeleton'
 import { SentimentAnalyticsTab } from '@/components/reports/sentiment-analytics'
 
 type ReportTab = 'overview' | 'channels' | 'categories' | 'ai-performance' | 'trends' | 'conversations' | 'sentiment' | 'spam-filters' | 'imported-data'
@@ -131,22 +138,22 @@ function TrendChart({ data, valueKey, label, color }: { data: { date: string; [k
   if (!data.length) return <p className="text-sm text-gray-400 text-center py-8">No data yet</p>
   const maxVal = Math.max(...data.map(d => d[valueKey] || 0), 1)
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       <div className="flex items-end gap-1" style={{ height: 140 }}>
         {data.map((d, i) => {
           const val = d[valueKey] || 0
           const pct = Math.max((val / maxVal) * 100, 2)
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group relative">
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-800 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10">
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-900 text-white text-[10px] px-1.5 py-0.5 rounded-md whitespace-nowrap z-10 tabular-nums shadow-md">
                 {val} {label}
               </div>
-              <div className={`w-full rounded-t ${color} transition-all`} style={{ height: `${pct}%`, minHeight: 2 }} />
+              <div className={cn('w-full rounded-t-md transition-all', color)} style={{ height: `${pct}%`, minHeight: 2 }} />
             </div>
           )
         })}
       </div>
-      <div className="flex justify-between text-[10px] text-gray-400 px-0.5">
+      <div className="flex justify-between text-[10px] text-gray-400 tabular-nums px-0.5">
         <span>{data[0]?.date?.slice(5) || ''}</span>
         <span>{data[Math.floor(data.length / 2)]?.date?.slice(5) || ''}</span>
         <span>{data[data.length - 1]?.date?.slice(5) || ''}</span>
@@ -158,22 +165,22 @@ function TrendChart({ data, valueKey, label, color }: { data: { date: string; [k
 // --- Helpers ---
 
 function getHeatmapColor(count: number): string {
-  if (count < 1) return 'bg-gray-100 text-gray-400'
-  if (count < 5) return 'bg-teal-100 text-teal-700'
-  if (count < 10) return 'bg-teal-300 text-teal-900'
+  if (count < 1) return 'bg-gray-50 text-gray-400 ring-1 ring-gray-100'
+  if (count < 5) return 'bg-teal-50 text-teal-700 ring-1 ring-teal-100'
+  if (count < 10) return 'bg-teal-200 text-teal-900 ring-1 ring-teal-300'
   if (count < 20) return 'bg-teal-500 text-white'
   return 'bg-teal-700 text-white'
 }
 
 function getSyncStatusBadge(status: SyncStatus) {
   const styles: Record<SyncStatus, string> = {
-    active: 'bg-green-100 text-green-700',
-    syncing: 'bg-blue-100 text-blue-700',
-    paused: 'bg-yellow-100 text-yellow-700',
-    error: 'bg-red-100 text-red-700',
+    active: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    syncing: 'bg-blue-50 text-blue-700 ring-blue-200',
+    paused: 'bg-amber-50 text-amber-700 ring-amber-200',
+    error: 'bg-red-50 text-red-700 ring-red-200',
   }
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', styles[status])}>
+    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', styles[status])}>
       {status === 'error' && <AlertCircle className="h-3 w-3" />}
       {status === 'syncing' && <RefreshCw className="h-3 w-3 animate-spin" />}
       {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -599,19 +606,78 @@ export default function ReportsPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-        <p className="mt-3 text-sm text-gray-500">Loading reports...</p>
+      <div className="space-y-6 p-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-44 rounded-lg" />
+            <Skeleton className="h-8 w-24 rounded-lg" />
+            <Skeleton className="h-8 w-28 rounded-lg" />
+            <Skeleton className="h-8 w-28 rounded-lg" />
+          </div>
+        </div>
+
+        {/* Tab nav */}
+        <div className="flex gap-6 border-b border-gray-200/80">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-6 w-24 rounded" />
+          ))}
+        </div>
+
+        {/* KPI row */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+
+        {/* Chart + adjacent card */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+            <div className="border-b border-gray-100 bg-gradient-to-b from-gray-50/50 to-transparent px-6 py-4">
+              <Skeleton className="h-4 w-40 rounded" />
+              <Skeleton className="mt-1.5 h-3 w-56 rounded" />
+            </div>
+            <div className="px-6 py-5">
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
+          </div>
+          <div className="rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+            <div className="border-b border-gray-100 bg-gradient-to-b from-gray-50/50 to-transparent px-6 py-4">
+              <Skeleton className="h-4 w-40 rounded" />
+              <Skeleton className="mt-1.5 h-3 w-56 rounded" />
+            </div>
+            <div className="px-6 py-5">
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
+          </div>
+        </div>
+
+        {/* Table skeleton */}
+        <div className="rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+          <div className="border-b border-gray-100 bg-gradient-to-b from-gray-50/50 to-transparent px-6 py-4">
+            <Skeleton className="h-4 w-48 rounded" />
+          </div>
+          <div className="px-6 py-5 space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full rounded" />
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reports &amp; Analytics</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Reports &amp; Analytics</h1>
           <p className="mt-1 text-sm text-gray-500">
             Performance metrics and insights across all channels
           </p>
@@ -628,29 +694,29 @@ export default function ReportsPage() {
           <button
             onClick={() => setCompareEnabled(!compareEnabled)}
             className={cn(
-              'flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+              'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium tracking-tight transition-all',
               compareEnabled
-                ? 'border-teal-300 bg-teal-50 text-teal-700'
-                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300'
+                ? 'border-teal-200 bg-teal-50 text-teal-700 ring-1 ring-teal-100'
+                : 'border-gray-200/80 bg-white text-gray-600 shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:border-gray-300 hover:bg-gray-50'
             )}
           >
-            <ArrowUpDown size={14} />
+            <ArrowUpDown size={13} strokeWidth={2} />
             vs Previous
           </button>
           <button
             onClick={handleExportPdf}
             disabled={exportingPdf}
-            className="flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-100 hover:border-teal-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium tracking-tight text-teal-700 ring-1 ring-teal-100 transition-all hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {exportingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+            {exportingPdf ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} strokeWidth={2} />}
             {exportingPdf ? 'Generating...' : 'Export PDF'}
           </button>
           <div className="relative group">
-            <button className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors">
-              <Download size={14} />
+            <button className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/80 bg-white px-3 py-1.5 text-xs font-medium tracking-tight text-gray-600 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:border-gray-300 hover:bg-gray-50">
+              <Download size={13} strokeWidth={2} />
               Export CSV
             </button>
-            <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-48 rounded-lg border border-gray-200 bg-white shadow-lg z-10">
+            <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-48 rounded-xl border border-gray-200/80 bg-white shadow-[0_4px_12px_rgba(16,24,40,0.08)] z-10 overflow-hidden">
               <a
                 href={`/api/export?type=messages&from=${getDateRangeStart(dateRange, customFrom).split('T')[0]}${customTo ? `&to=${customTo}` : ''}`}
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
@@ -671,7 +737,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200/80">
         <nav className="-mb-px flex gap-6 overflow-x-auto" aria-label="Report tabs">
           {tabs.map((tab) => {
             const Icon = tab.icon
@@ -681,13 +747,13 @@ export default function ReportsPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'flex items-center gap-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors',
+                  'flex items-center gap-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium tracking-tight transition-colors',
                   isActive
-                    ? 'border-teal-600 text-teal-600'
+                    ? 'border-teal-600 text-teal-700'
                     : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                 )}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-4 w-4" strokeWidth={2} />
                 {tab.label}
               </button>
             )
@@ -701,7 +767,7 @@ export default function ReportsPage() {
         <div className="space-y-6">
           {/* Comparison summary cards */}
           {compareEnabled && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4">
               {(() => {
                 const totalMsgs = currentTotalMessages
                 const totalClass = aiMetrics?.totalClassifications || 0
@@ -723,25 +789,28 @@ export default function ReportsPage() {
             </div>
           )}
 
-          <ReportCard title="Message Volume" description="Messages received per day across all channels">
+          <ReportCard title="Message Volume" description="Messages received per day across all channels" icon={BarChart3} accent="teal">
             <MessageVolumeChart data={messageVolumeData} />
             {selectedBarFilter && (
-              <div className="mt-2 text-xs text-gray-500">
-                Filtered by: <span className="font-medium text-gray-700">{selectedBarFilter}</span>
+              <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                <span>Filtered by:</span>
+                <span className="inline-flex items-center rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200">
+                  {selectedBarFilter}
+                </span>
                 <button
                   onClick={() => setSelectedBarFilter(null)}
-                  className="ml-2 text-teal-600 hover:underline"
+                  className="text-teal-600 hover:text-teal-700 hover:underline"
                 >
                   Clear
                 </button>
               </div>
             )}
           </ReportCard>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ReportCard title="Response Time by Channel" description="Average response time in minutes">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+            <ReportCard title="Response Time by Channel" description="Average response time in minutes" icon={Clock} accent="blue">
               <ResponseTimeChart data={responseTimeData} onBarClick={(channel: string) => setSelectedBarFilter(channel)} />
             </ReportCard>
-            <ReportCard title="Issue Category Breakdown" description="Distribution of message categories">
+            <ReportCard title="Issue Category Breakdown" description="Distribution of message categories" icon={Tag} accent="purple">
               <CategoryPieChart data={categoryPieData} />
             </ReportCard>
           </div>
@@ -754,61 +823,72 @@ export default function ReportsPage() {
 
       {activeTab === 'channels' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-3">
             {channelStats.map((ch: any) => (
-              <div key={ch.channel} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: ch.color }} />
-                  <h3 className="text-lg font-semibold text-gray-900">{ch.channel}</h3>
+              <div
+                key={ch.channel}
+                className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)] transition-shadow hover:shadow-[0_4px_10px_rgba(16,24,40,0.06),0_2px_4px_rgba(16,24,40,0.04)]"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-2 w-2 rounded-full" style={{ backgroundColor: ch.color }} />
+                    <h3 className="text-[15px] font-semibold tracking-tight text-gray-900">{ch.channel}</h3>
+                  </div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Channel</span>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="mt-5 grid grid-cols-2 gap-4 divide-x divide-gray-100">
                   <div>
-                    <p className="text-xs text-gray-500">Total Messages</p>
-                    <p className="text-xl font-bold text-gray-900">{ch.totalMessages}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Total</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{ch.totalMessages}</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Avg Response</p>
-                    <p className="text-xl font-bold text-gray-900">{ch.avgResponseTime}</p>
+                  <div className="pl-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Avg Response</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{ch.avgResponseTime}</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Resolved Rate</p>
-                    <p className="text-xl font-bold text-gray-900">{ch.resolvedRate}%</p>
+                  <div className="pt-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Resolved</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{ch.resolvedRate}%</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-gray-500">AI Sent Rate</p>
-                    <p className="text-xl font-bold text-gray-900">{ch.aiSentRate}%</p>
+                  <div className="pt-3 pl-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">AI Sent</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{ch.aiSentRate}%</p>
                   </div>
                 </div>
-                <div className="mt-4 text-xs text-gray-500">
-                  Peak Hour: <span className="font-medium text-gray-700">{ch.peakHour}</span>
+                <div className="mt-5 flex items-center gap-1.5 text-xs text-gray-500">
+                  <Clock className="h-3.5 w-3.5 text-gray-400" strokeWidth={2} />
+                  <span>Peak hour:</span>
+                  <span className="font-medium tabular-nums text-gray-700">{ch.peakHour}</span>
                 </div>
-                <div className="mt-3 h-1 w-full rounded-full" style={{ backgroundColor: ch.color }} />
+                <div
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5"
+                  style={{ backgroundColor: ch.color, opacity: 0.8 }}
+                />
               </div>
             ))}
           </div>
 
           {peakHoursData.length > 0 && (
-            <ReportCard title="Peak Hours Heatmap" description="Message volume by day and hour">
+            <ReportCard title="Peak Hours Heatmap" description="Message volume by day and hour" icon={Flame} accent="amber">
               <div className="overflow-x-auto">
                 <div className="min-w-[600px]">
-                  <div className="mb-1 flex gap-1">
+                  <div className="mb-1.5 flex gap-1">
                     <div className="w-10 flex-shrink-0" />
                     {peakHoursData[0]?.map((cell: any) => (
-                      <div key={cell.hour} className="flex-1 text-center text-xs text-gray-500">
+                      <div key={cell.hour} className="flex-1 text-center text-[11px] font-medium tabular-nums text-gray-500">
                         {cell.hour.replace(':00', '')}
                       </div>
                     ))}
                   </div>
                   {peakHoursData.map((row: any[], dayIdx: number) => (
                     <div key={dayIdx} className="mb-1 flex items-center gap-1">
-                      <div className="w-10 flex-shrink-0 text-xs font-medium text-gray-600">
+                      <div className="w-10 flex-shrink-0 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                         {row[0]?.day}
                       </div>
                       {row.map((cell: any, hourIdx: number) => (
                         <div
                           key={hourIdx}
                           className={cn(
-                            'flex h-8 flex-1 items-center justify-center rounded text-xs font-medium',
+                            'flex h-8 flex-1 items-center justify-center rounded-md text-[11px] font-semibold tabular-nums transition-transform hover:scale-105',
                             getHeatmapColor(cell.count)
                           )}
                           title={`${cell.day} ${cell.hour}: ${cell.count} messages`}
@@ -820,11 +900,11 @@ export default function ReportsPage() {
                   ))}
                 </div>
               </div>
-              <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
+              <div className="mt-4 flex items-center gap-3 text-[11px] text-gray-500">
                 <span>Less</span>
                 <div className="flex gap-1">
                   {['bg-gray-100', 'bg-teal-100', 'bg-teal-300', 'bg-teal-500', 'bg-teal-700'].map((c) => (
-                    <div key={c} className={cn('h-4 w-6 rounded', c)} />
+                    <div key={c} className={cn('h-3 w-5 rounded-sm', c)} />
                   ))}
                 </div>
                 <span>More</span>
@@ -836,28 +916,28 @@ export default function ReportsPage() {
 
       {activeTab === 'categories' && (
         <div className="space-y-6">
-          <ReportCard title="Category Breakdown" description="Message count by classification category">
+          <ReportCard title="Category Breakdown" description="Message count by classification category" icon={Tag} accent="blue">
             {categoryBreakdown.length === 0 ? (
               <div className="py-8 text-center text-sm text-gray-400">
                 No classifications yet. Enable Phase 1 AI on accounts to see category data.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {categoryBreakdown.map((cat: any, i: number) => (
                   <div key={cat.name} className="flex items-center gap-3">
-                    <span className="w-36 flex-shrink-0 truncate text-sm text-gray-700">{cat.name}</span>
+                    <span className="w-36 flex-shrink-0 truncate text-xs font-medium text-gray-700">{cat.name}</span>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <div className="h-6 flex-1 overflow-hidden rounded bg-gray-100">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
                           <div
-                            className="h-full rounded transition-all"
+                            className="h-full rounded-full transition-all"
                             style={{
                               width: `${(cat.count / maxCategoryCount) * 100}%`,
                               backgroundColor: ['#3b82f6','#ef4444','#f59e0b','#8b5cf6','#06b6d4','#10b981','#f97316','#ec4899','#6b7280'][i % 9],
                             }}
                           />
                         </div>
-                        <span className="w-8 text-right text-sm font-semibold text-gray-700">{cat.count}</span>
+                        <span className="w-10 text-right text-sm font-semibold tabular-nums tracking-tight text-gray-700">{cat.count}</span>
                       </div>
                     </div>
                   </div>
@@ -866,27 +946,28 @@ export default function ReportsPage() {
             )}
           </ReportCard>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ReportCard title="Sentiment Trends" description="Daily sentiment distribution">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+            <ReportCard title="Sentiment Trends" description="Daily sentiment distribution" icon={Activity} accent="green">
               <SentimentChart data={sentimentData} />
             </ReportCard>
 
-            <ReportCard title="Urgency Distribution" description="Message urgency levels">
-              <div className="space-y-4">
+            <ReportCard title="Urgency Distribution" description="Message urgency levels" icon={AlertTriangle} accent="red">
+              <div className="space-y-3">
                 {urgencyDistribution.map((u: any) => (
                   <div key={u.level} className="flex items-center gap-3">
-                    <span className="w-16 flex-shrink-0 text-sm font-medium text-gray-700">{u.level}</span>
+                    <span className="w-16 flex-shrink-0 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{u.level}</span>
                     <div className="flex-1">
-                      <div className="h-8 overflow-hidden rounded bg-gray-100">
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
                         <div
-                          className={cn('flex h-full items-center rounded px-3 text-xs font-semibold text-white transition-all', u.color)}
+                          className={cn('h-full rounded-full transition-all', u.color)}
                           style={{ width: `${totalUrgency > 0 ? (u.count / totalUrgency) * 100 : 0}%` }}
-                        >
-                          {u.count}
-                        </div>
+                        />
                       </div>
                     </div>
-                    <span className="w-12 text-right text-sm text-gray-500">
+                    <span className="w-10 text-right text-sm font-semibold tabular-nums tracking-tight text-gray-700">
+                      {u.count}
+                    </span>
+                    <span className="w-12 text-right text-xs tabular-nums text-gray-500">
                       {totalUrgency > 0 ? ((u.count / totalUrgency) * 100).toFixed(0) : 0}%
                     </span>
                   </div>
@@ -900,37 +981,43 @@ export default function ReportsPage() {
       {activeTab === 'ai-performance' && aiMetrics && (
         <>
         <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard icon={CheckCircle2} iconColor="text-green-600" iconBg="bg-green-100"
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4">
+            <MetricCard icon={CheckCircle2} accent="green"
               label="Avg AI Confidence" value={`${aiMetrics.classificationAccuracy}%`}
               subtitle={`${aiMetrics.totalClassifications} total classifications`} trend="up" />
-            <MetricCard icon={TrendingUp} iconColor="text-blue-600" iconBg="bg-blue-100"
+            <MetricCard icon={TrendingUp} accent="blue"
               label="Approval Rate" value={`${aiMetrics.approvalRate}%`}
               subtitle="Replies approved without edits" trend="up" />
-            <MetricCard icon={PenLine} iconColor="text-amber-600" iconBg="bg-amber-100"
+            <MetricCard icon={PenLine} accent="amber"
               label="Edit Rate" value={`${aiMetrics.editRate}%`}
               subtitle="Replies edited before sending" trend="down" />
-            <MetricCard icon={Send} iconColor="text-teal-600" iconBg="bg-teal-100"
+            <MetricCard icon={Send} accent="teal"
               label="Auto-Send Rate" value={`${aiMetrics.autoSendRate}%`}
               subtitle="Sent without human review" trend="up" />
           </div>
 
-          <ReportCard title="AI Usage Summary" description="AI reply generation statistics">
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-              <div className="rounded-lg border border-gray-100 p-4 text-center">
-                <DollarSign className="mx-auto h-8 w-8 text-green-600" />
-                <p className="mt-2 text-2xl font-bold text-gray-900">{aiMetrics.totalClassifications}</p>
-                <p className="text-sm text-gray-500">Total Classifications</p>
+          <ReportCard title="AI Usage Summary" description="AI reply generation statistics" icon={Bot} accent="purple">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-5">
+              <div className="rounded-xl border border-gray-200/80 bg-white p-4 text-center shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                  <DollarSign className="h-4.5 w-4.5" strokeWidth={2} />
+                </div>
+                <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{aiMetrics.totalClassifications}</p>
+                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Total Classifications</p>
               </div>
-              <div className="rounded-lg border border-gray-100 p-4 text-center">
-                <Bot className="mx-auto h-8 w-8 text-blue-600" />
-                <p className="mt-2 text-2xl font-bold text-gray-900">{aiMetrics.totalRepliesGenerated}</p>
-                <p className="text-sm text-gray-500">Replies Generated</p>
+              <div className="rounded-xl border border-gray-200/80 bg-white p-4 text-center shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+                  <Bot className="h-4.5 w-4.5" strokeWidth={2} />
+                </div>
+                <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{aiMetrics.totalRepliesGenerated}</p>
+                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Replies Generated</p>
               </div>
-              <div className="rounded-lg border border-gray-100 p-4 text-center">
-                <TrendingDown className="mx-auto h-8 w-8 text-purple-600" />
-                <p className="mt-2 text-2xl font-bold text-gray-900">{aiMetrics.approvalRate}%</p>
-                <p className="text-sm text-gray-500">Approval Rate</p>
+              <div className="rounded-xl border border-gray-200/80 bg-white p-4 text-center shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700 ring-1 ring-violet-200">
+                  <Zap className="h-4.5 w-4.5" strokeWidth={2} />
+                </div>
+                <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{aiMetrics.approvalRate}%</p>
+                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Approval Rate</p>
               </div>
             </div>
           </ReportCard>
@@ -944,14 +1031,14 @@ export default function ReportsPage() {
       {activeTab === 'trends' && (
         <>
         <div className="space-y-6">
-          <ReportCard title="Daily Message Volume (Last 30 Days)" description="Total inbound messages per day">
+          <ReportCard title="Daily Message Volume (Last 30 Days)" description="Total inbound messages per day" icon={BarChart3} accent="teal">
             <TrendChart data={dailyVolume} valueKey="count" label="Messages" color="bg-teal-500" />
           </ReportCard>
-          <ReportCard title="Daily Response Time (Last 30 Days)" description="Average response time in minutes per day">
+          <ReportCard title="Daily Response Time (Last 30 Days)" description="Average response time in minutes per day" icon={Clock} accent="indigo">
             <TrendChart data={dailyResponseTime} valueKey="avgMins" label="Avg Minutes" color="bg-indigo-500" />
           </ReportCard>
-          <ReportCard title="Daily AI Replies (Last 30 Days)" description="AI-generated replies sent per day">
-            <TrendChart data={dailyAiReplies} valueKey="count" label="AI Replies" color="bg-purple-500" />
+          <ReportCard title="Daily AI Replies (Last 30 Days)" description="AI-generated replies sent per day" icon={Bot} accent="purple">
+            <TrendChart data={dailyAiReplies} valueKey="count" label="AI Replies" color="bg-violet-500" />
           </ReportCard>
         </div>
 
@@ -977,31 +1064,31 @@ export default function ReportsPage() {
 
       {activeTab === 'imported-data' && (
         <div className="space-y-6">
-          <ReportCard title="Google Sheets Sync Status" description="Connected spreadsheets and their sync health">
+          <ReportCard title="Google Sheets Sync Status" description="Connected spreadsheets and their sync health" icon={FileSpreadsheet} accent="green">
             {sheetsSyncData.length === 0 ? (
               <div className="py-8 text-center text-sm text-gray-400">
                 No Google Sheets connected yet. Go to Admin → Sheets to set up sync.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="-mx-6 -my-5 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="pb-3 text-left font-medium text-gray-500">Sheet Name</th>
-                      <th className="pb-3 text-left font-medium text-gray-500">Status</th>
-                      <th className="pb-3 text-right font-medium text-gray-500">Rows</th>
-                      <th className="pb-3 text-left font-medium text-gray-500">Schedule</th>
-                      <th className="pb-3 text-left font-medium text-gray-500">Last Sync</th>
+                  <thead className="bg-gray-50/50">
+                    <tr className="border-y border-gray-100">
+                      <th className="px-6 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Sheet Name</th>
+                      <th className="px-6 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                      <th className="px-6 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">Rows</th>
+                      <th className="px-6 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Schedule</th>
+                      <th className="px-6 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Last Sync</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-gray-100">
                     {sheetsSyncData.map((sheet: any) => (
-                      <tr key={sheet.id} className="hover:bg-gray-50">
-                        <td className="py-3 font-medium text-gray-900">{sheet.sheetName}</td>
-                        <td className="py-3">{getSyncStatusBadge(sheet.syncStatus)}</td>
-                        <td className="py-3 text-right text-gray-700">{sheet.rowCount.toLocaleString()}</td>
-                        <td className="py-3 text-gray-600">{sheet.syncSchedule}</td>
-                        <td className="py-3 text-gray-500">
+                      <tr key={sheet.id} className="transition-colors hover:bg-gray-50/60">
+                        <td className="px-6 py-3 text-sm font-medium text-gray-900">{sheet.sheetName}</td>
+                        <td className="px-6 py-3">{getSyncStatusBadge(sheet.syncStatus)}</td>
+                        <td className="px-6 py-3 text-right text-sm font-medium tabular-nums text-gray-700">{sheet.rowCount.toLocaleString()}</td>
+                        <td className="px-6 py-3 text-xs text-gray-600">{sheet.syncSchedule}</td>
+                        <td className="px-6 py-3 text-xs tabular-nums text-gray-500">
                           {sheet.lastSyncAt ? new Date(sheet.lastSyncAt).toLocaleString() : 'Never'}
                         </td>
                       </tr>
@@ -1026,18 +1113,21 @@ function ComparisonCard({
   change: { text: string; isPositive: boolean }; suffix?: string
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium text-gray-500">{label}</p>
-      <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-2xl font-bold text-gray-900">{current}{suffix}</span>
+    <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{label}</p>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{current}{suffix}</span>
         <span className={cn(
-          'text-sm font-semibold',
-          change.isPositive ? 'text-green-600' : 'text-red-600'
+          'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-medium ring-1',
+          change.isPositive
+            ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+            : 'bg-red-50 text-red-700 ring-red-200'
         )}>
+          {change.isPositive ? <ArrowUpRight className="h-3 w-3" strokeWidth={2.5} /> : <ArrowDownRight className="h-3 w-3" strokeWidth={2.5} />}
           {change.text}
         </span>
       </div>
-      <p className="mt-1 text-xs text-gray-400">
+      <p className="mt-1.5 text-xs tabular-nums text-gray-400">
         Previous: {previous}{suffix}
       </p>
     </div>
@@ -1046,24 +1136,38 @@ function ComparisonCard({
 
 // --- Shared metric card ---
 
+const METRIC_ACCENTS: Record<string, { bg: string; text: string; ring: string }> = {
+  teal:   { bg: 'bg-teal-50',    text: 'text-teal-700',    ring: 'ring-teal-200' },
+  blue:   { bg: 'bg-blue-50',    text: 'text-blue-700',    ring: 'ring-blue-200' },
+  green:  { bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200' },
+  amber:  { bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'ring-amber-200' },
+  red:    { bg: 'bg-red-50',     text: 'text-red-700',     ring: 'ring-red-200' },
+  purple: { bg: 'bg-violet-50',  text: 'text-violet-700',  ring: 'ring-violet-200' },
+}
+
 function MetricCard({
-  icon: Icon, iconColor, iconBg, label, value, subtitle, trend,
+  icon: Icon, accent = 'teal', label, value, subtitle, trend,
 }: {
-  icon: React.ElementType; iconColor: string; iconBg: string
+  icon: React.ElementType; accent?: keyof typeof METRIC_ACCENTS
   label: string; value: string; subtitle: string; trend: 'up' | 'down'
 }) {
+  const a = METRIC_ACCENTS[accent] || METRIC_ACCENTS.teal
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <p className="text-sm font-medium text-gray-500">{label}</p>
-        <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', iconBg, iconColor)}>
-          <Icon className="h-5 w-5" />
+    <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{label}</p>
+        <div className={cn('flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ring-1', a.bg, a.text, a.ring)}>
+          <Icon className="h-4.5 w-4.5" strokeWidth={2} />
         </div>
       </div>
-      <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
-      <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-        {trend === 'up' ? <TrendingUp className="h-3 w-3 text-green-500" /> : <TrendingDown className="h-3 w-3 text-amber-500" />}
-        {subtitle}
+      <p className="mt-3 text-3xl font-semibold leading-tight tabular-nums tracking-tight text-gray-900">{value}</p>
+      <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+        {trend === 'up' ? (
+          <ArrowUpRight className="h-3 w-3 text-emerald-500" strokeWidth={2.5} />
+        ) : (
+          <ArrowDownRight className="h-3 w-3 text-amber-500" strokeWidth={2.5} />
+        )}
+        <span className="truncate">{subtitle}</span>
       </div>
     </div>
   )

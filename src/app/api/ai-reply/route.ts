@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient, createServerSupabaseClient } from '@/lib/supabase-server'
 import { callAI, getAccountSettings, checkRateLimit } from '@/lib/api-helpers'
+import { AIBudgetExceededError } from '@/lib/ai-usage'
+import { sendEmail, sendTeams, sendWhatsApp } from '@/lib/channel-sender'
 import { logInfo, logError } from '@/lib/logger'
+import { getRequestId } from '@/lib/request-id'
 import type { ChannelType, AIReplyStatus } from '@/types/database'
 
 const CHANNEL_SYSTEM_PROMPTS: Record<ChannelType, string> = {
@@ -19,10 +22,12 @@ Be direct and helpful. You can use a warm but professional tone.`,
 }
 
 export async function POST(request: Request) {
+  const requestId = await getRequestId()
+  const startedAt = Date.now()
   try {
     // Allow internal calls (from webhook handlers) via webhook secret, or authenticated users
     const webhookSecret = request.headers.get('x-webhook-secret')
-    const expectedSecret = process.env.N8N_WEBHOOK_SECRET
+    const expectedSecret = process.env.WEBHOOK_SECRET
     const isInternalCall = !!expectedSecret && webhookSecret === expectedSecret
 
     let authenticatedUserId: string | null = null
@@ -51,7 +56,7 @@ export async function POST(request: Request) {
     }
 
     // Rate limit per account
-    if (!checkRateLimit(`ai-reply:${account_id}`)) {
+    if (!(await checkRateLimit(`ai-reply:${account_id}`, 100, 60))) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
@@ -332,7 +337,34 @@ export async function POST(request: Request) {
     const userMessage = `${conversationContext}Please reply to the following customer message:\n${message_text}`
 
     // Call AI API for reply generation
-    const replyText = await callAI(systemPrompt, userMessage)
+    let replyText: string
+    try {
+      replyText = await callAI(systemPrompt, userMessage, {
+        account_id,
+        endpoint: 'ai-reply',
+        request_id: requestId,
+      })
+    } catch (err) {
+      if (err instanceof AIBudgetExceededError) {
+        logError('ai', 'budget_exceeded_ai_reply', err.message, {
+          request_id: requestId,
+          account_id,
+          monthly_total_usd: err.monthly_total_usd,
+          budget_usd: err.budget_usd,
+        })
+        return NextResponse.json(
+          {
+            error: 'AI budget exceeded for this account',
+            skipped: true,
+            monthly_total_usd: err.monthly_total_usd,
+            budget_usd: err.budget_usd,
+            retry_after: 'next month',
+          },
+          { status: 200 }
+        )
+      }
+      throw err
+    }
 
     if (!replyText) {
       return NextResponse.json(
@@ -404,13 +436,12 @@ export async function POST(request: Request) {
       try { await supabase.from('kb_hits').insert(kbHits) } catch { /* ignore */ }
     }
 
-    // If trust mode is on, trigger n8n to send the reply through the channel
+    // If trust mode is on, send the reply directly via SMTP / Graph / Meta
     if (account.ai_trust_mode && aiReply) {
       try {
-        // Get conversation details for the reply (recipient, subject, teams_chat_id)
         const { data: convForReply } = await supabase
           .from('conversations')
-          .select('participant_email, teams_chat_id')
+          .select('participant_email, participant_phone, teams_chat_id')
           .eq('id', conversation_id)
           .maybeSingle()
         const { data: origMsg } = await supabase
@@ -419,40 +450,54 @@ export async function POST(request: Request) {
           .eq('id', message_id)
           .maybeSingle()
 
-        const origin = new URL(request.url).origin
-        await fetch(`${origin}/api/n8n`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || '',
-          },
-          body: JSON.stringify({
-            action: `send_${channelKey}_reply`,
+        const subject = origMsg?.email_subject ? `Re: ${origMsg.email_subject}` : 'Re: Your communication'
+        let sendResult
+        if (channelKey === 'email' && convForReply?.participant_email) {
+          sendResult = await sendEmail({ accountId: account_id, to: convForReply.participant_email, subject, body: replyText })
+        } else if (channelKey === 'teams' && convForReply?.teams_chat_id) {
+          sendResult = await sendTeams({ accountId: account_id, chatId: convForReply.teams_chat_id, body: replyText })
+        } else if (channelKey === 'whatsapp' && convForReply?.participant_phone) {
+          sendResult = await sendWhatsApp({ accountId: account_id, toPhone: convForReply.participant_phone, body: replyText })
+        }
+
+        if (sendResult?.ok) {
+          await supabase
+            .from('ai_replies')
+            .update({ status: 'sent', sent_at: new Date().toISOString(), delivery_status: 'sent' })
+            .eq('id', aiReply.id)
+        } else if (sendResult) {
+          logError('ai', 'trust_send_failed', sendResult.error, {
+            request_id: requestId,
             account_id,
-            data: {
-              to: convForReply?.participant_email || null,
-              subject: origMsg?.email_subject ? `Re: ${origMsg.email_subject}` : 'Re: Your communication',
-              message: replyText,
-              reply_id: aiReply.id,
-              reply_text: replyText,
-              conversation_id,
-              message_id,
-              teams_chat_id: convForReply?.teams_chat_id || null,
-            },
-          }),
-        })
+            reply_id: aiReply.id,
+          })
+        }
       } catch (sendError) {
-        console.error('Failed to trigger n8n reply workflow:', sendError)
+        logError('ai', 'trust_send_error', sendError instanceof Error ? sendError.message : 'unknown', {
+          request_id: requestId,
+          account_id,
+          reply_id: aiReply.id,
+        })
       }
     }
 
-    logInfo('ai', 'reply_generated', `AI reply for ${channel} message`, { message_id, account_id, confidence: confidenceScore, status: aiReply?.status, kb_articles_used: matchedKbIds.length })
+    logInfo('ai', 'reply_generated', `AI reply for ${channel} message`, {
+      request_id: requestId,
+      message_id,
+      account_id,
+      confidence: confidenceScore,
+      status: aiReply?.status,
+      kb_articles_used: matchedKbIds.length,
+      duration_ms: Date.now() - startedAt,
+    })
     return NextResponse.json(aiReply, { status: 200 })
   } catch (error) {
-    console.error('AI reply generation error:', error)
-    logError('ai', 'reply_error', error instanceof Error ? error.message : 'Unknown error')
+    logError('ai', 'reply_error', error instanceof Error ? error.message : 'Unknown error', {
+      request_id: requestId,
+      duration_ms: Date.now() - startedAt,
+    })
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', request_id: requestId },
       { status: 500 }
     )
   }

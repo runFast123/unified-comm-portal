@@ -11,11 +11,17 @@ import { cn } from '@/lib/utils'
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'
 
+interface ToastAction {
+  label: string
+  onClick: (id: string) => void
+}
+
 interface ToastItem {
   id: string
   type: ToastType
   message: string
   duration: number
+  action?: ToastAction
 }
 
 interface ToastAPI {
@@ -23,6 +29,11 @@ interface ToastAPI {
   error: (message: string, duration?: number) => void
   warning: (message: string, duration?: number) => void
   info: (message: string, duration?: number) => void
+  /** Show a toast with an action button. Returns the toast id so caller can dismiss/update. */
+  withAction: (
+    message: string,
+    opts: { type?: ToastType; action: ToastAction; duration?: number }
+  ) => string
   dismiss: (id: string) => void
 }
 
@@ -140,6 +151,20 @@ function Toast({
       <p className={cn('flex-1 text-sm font-medium leading-snug', config.text)}>
         {item.message}
       </p>
+      {item.action && (
+        <button
+          onClick={() => {
+            item.action?.onClick(item.id)
+          }}
+          className={cn(
+            'shrink-0 rounded-md px-2 py-1 text-xs font-semibold transition-colors',
+            'bg-white/70 hover:bg-white',
+            config.text
+          )}
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         onClick={handleClose}
         className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-black/5 hover:text-gray-600 transition-colors"
@@ -172,17 +197,40 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const addToast = useCallback((type: ToastType, message: string, duration = DEFAULT_DURATION) => {
     const id = `toast-${++idCounter}-${Date.now()}`
     setToasts((prev) => [...prev, { id, type, message, duration }])
+    return id
   }, [])
+
+  const addActionToast = useCallback(
+    (
+      message: string,
+      opts: { type?: ToastType; action: ToastAction; duration?: number }
+    ) => {
+      const id = `toast-${++idCounter}-${Date.now()}`
+      setToasts((prev) => [
+        ...prev,
+        {
+          id,
+          type: opts.type ?? 'info',
+          message,
+          duration: opts.duration ?? DEFAULT_DURATION,
+          action: opts.action,
+        },
+      ])
+      return id
+    },
+    []
+  )
 
   const toast: ToastAPI = React.useMemo(
     () => ({
-      success: (message, duration) => addToast('success', message, duration),
-      error: (message, duration) => addToast('error', message, duration),
-      warning: (message, duration) => addToast('warning', message, duration),
-      info: (message, duration) => addToast('info', message, duration),
+      success: (message, duration) => { addToast('success', message, duration) },
+      error: (message, duration) => { addToast('error', message, duration) },
+      warning: (message, duration) => { addToast('warning', message, duration) },
+      info: (message, duration) => { addToast('info', message, duration) },
+      withAction: addActionToast,
       dismiss,
     }),
-    [addToast, dismiss]
+    [addToast, addActionToast, dismiss]
   )
 
   const value = React.useMemo(() => ({ toast }), [toast])

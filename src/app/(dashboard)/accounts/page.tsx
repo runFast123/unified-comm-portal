@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Clock, MessageCircle, AlertCircle, Loader2, Mail, MessageSquare } from 'lucide-react'
+import { Clock, MessageCircle, AlertCircle, Loader2, Mail, MessageSquare, Building2 } from 'lucide-react'
 import { ChannelIcon } from '@/components/ui/channel-icon'
 import { PhaseIndicator } from '@/components/ui/phase-indicator'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { createClient } from '@/lib/supabase-client'
 import { cn, timeAgo, getChannelLabel } from '@/lib/utils'
 import type { Account } from '@/types/database'
@@ -128,15 +131,65 @@ export default function AccountsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-80 items-center justify-center animate-fade-in">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-teal-100 flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
+      <div className="space-y-6 animate-fade-in">
+        {/* Header skeleton */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-32" />
+            <Skeleton className="h-4 w-64" />
           </div>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-700">Loading accounts</p>
-            <p className="text-xs text-gray-400 mt-1">Fetching account data...</p>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-6 w-28 rounded-full" />
+            <Skeleton className="h-6 w-24 rounded-full" />
           </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-2xl border border-gray-200/80 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]"
+            >
+              <Skeleton className="h-3 w-24 rounded" />
+              <Skeleton className="mt-2 h-7 w-12 rounded" />
+              <Skeleton className="mt-2 h-3 w-32 rounded" />
+            </div>
+          ))}
+        </div>
+
+        {/* Company cards skeleton */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]"
+            >
+              <div className="p-5 pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-32 rounded" />
+                    <Skeleton className="h-3 w-40 rounded" />
+                  </div>
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
+              </div>
+              <div className="border-t border-gray-100 px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3 w-16 rounded" />
+                    <Skeleton className="h-3 w-24 rounded" />
+                  </div>
+                  <Skeleton className="h-4 w-12 rounded-full" />
+                </div>
+              </div>
+              <div className="border-t border-gray-100 px-5 py-2.5 flex items-center justify-between">
+                <Skeleton className="h-3 w-20 rounded" />
+                <Skeleton className="h-3 w-24 rounded" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -220,6 +273,23 @@ export default function AccountsPage() {
           {totalPending > 0 && <p className="mt-1 text-xs text-orange-500">Needs attention</p>}
         </div>
       </div>
+
+      {/* Empty state — no companies configured */}
+      {groups.length === 0 && (
+        <div className="rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+          <EmptyState
+            icon={Building2}
+            title="No accounts configured yet"
+            description="Connect your first email or Teams channel to start ingesting customer conversations."
+            action={
+              <Link href="/admin/channels">
+                <Button variant="primary">Configure Channels</Button>
+              </Link>
+            }
+            hint="Admins can add channels from Admin → Channels."
+          />
+        </div>
+      )}
 
       {/* Company cards — grouped */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

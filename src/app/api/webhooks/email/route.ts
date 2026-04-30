@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase-server'
 import { logInfo, logError } from '@/lib/logger'
 import {
@@ -8,125 +8,16 @@ import {
   stripHtml,
   checkRateLimit,
 } from '@/lib/api-helpers'
-
-// --- Spam Detection ---
-
-const SPAM_SENDER_PATTERNS = [
-  'noreply@', 'no-reply@', 'notifications@', 'marketing@',
-  'newsletter@', 'mailer-daemon@', 'postmaster@',
-  'digest@', 'updates@', 'news@', 'alerts@', 'promo@',
-  'campaigns@', 'bounce@', 'auto@', 'system@', 'donotreply@',
-  'unsubscribe@', 'feedback@', 'survey@', 'invite@',
-]
-
-const SPAM_SUBJECT_KEYWORDS = [
-  'unsubscribe', 'newsletter', 'promotional', 'advertisement',
-  'do not reply', 'automated message', 'out of office', 'auto-reply',
-  'delivery status notification', 'mailer-daemon',
-]
-
-const NEWSLETTER_SUBJECT_KEYWORDS = [
-  'webinar', 'invitation to', 'register now', 'sign up today',
-  'event reminder', 'join us', 'you\'re invited',
-  'digest', 'roundup', 'weekly update', 'monthly update', 'daily update',
-  'what\'s new', 'product update', 'release notes', 'changelog',
-  'award', 'nomination', 'submit your entry',
-  'survey', 'take our survey', 'your feedback',
-  'received $', 'payment of $', 'transaction alert',
-  'account statement', 'billing summary',
-  'trending', 'top stories', 'breaking news',
-  'limited time', 'exclusive offer', 'special deal', 'save up to',
-  'free trial', 'get started free',
-]
-
-const BULK_SENDER_PATTERNS = [
-  'zendesk', 'freshdesk', 'hubspot', 'mailchimp',
-  'sendgrid', 'constant contact', 'campaign monitor',
-  'mailgun', 'postmark', 'sparkpost', 'sendinblue', 'brevo',
-  'convertkit', 'drip', 'activecampaign', 'klaviyo',
-  'intercom', 'drift', 'crisp', 'tawk',
-]
-
-// Only include dedicated email marketing / newsletter platforms — NOT general enterprise domains
-const NEWSLETTER_SENDER_DOMAINS = [
-  'mailchimp.com', 'sendgrid.net', 'hubspot.com', 'constantcontact.com',
-  'campaign-archive.com', 'createsend.com', 'mailgun.org',
-  'substack.com', 'ghost.io',
-]
-
-// Noreply-prefixed addresses from any domain are likely automated
-const NOREPLY_PREFIXES = [
-  'noreply@', 'no-reply@', 'donotreply@', 'do-not-reply@',
-  'notifications@', 'notification@', 'alerts@', 'alert@',
-  'updates@', 'update@', 'news@', 'newsletter@', 'digest@',
-  'mailer@', 'mailer-daemon@', 'postmaster@',
-]
-
-interface SpamCheckResult {
-  isSpam: boolean
-  reason: string | null
-}
-
-function detectSpam(
-  senderEmail: string | null,
-  subject: string | null,
-  messageText: string
-): SpamCheckResult {
-  const emailLower = (senderEmail || '').toLowerCase()
-  const subjectLower = (subject || '').toLowerCase()
-  const bodyLower = messageText.toLowerCase()
-
-  // 1. Check hard spam sender patterns
-  if (SPAM_SENDER_PATTERNS.some(p => emailLower.startsWith(p))) {
-    return { isSpam: true, reason: 'automated_notification' }
-  }
-
-  // 2. Check hard spam subject keywords
-  if (SPAM_SUBJECT_KEYWORDS.some(kw => subjectLower.includes(kw))) {
-    return { isSpam: true, reason: 'spam' }
-  }
-
-  // 3. Check newsletter sender domains (only dedicated email marketing platforms)
-  if (NEWSLETTER_SENDER_DOMAINS.some(d => emailLower.includes(d))) {
-    return { isSpam: true, reason: 'newsletter' }
-  }
-
-  // 4. Check noreply/automated sender prefixes
-  if (NOREPLY_PREFIXES.some(p => emailLower.startsWith(p))) {
-    return { isSpam: true, reason: 'automated_notification' }
-  }
-
-  // 5. Check bulk sender platforms
-  if (BULK_SENDER_PATTERNS.some(p => emailLower.includes(p))) {
-    return { isSpam: true, reason: 'marketing' }
-  }
-
-  // 6. Check newsletter subject keywords
-  if (NEWSLETTER_SUBJECT_KEYWORDS.some(kw => subjectLower.includes(kw))) {
-    return { isSpam: true, reason: 'newsletter' }
-  }
-
-  // 7. Check body: require multiple spam signals (not just "unsubscribe" alone)
-  const spamBodySignals = [
-    bodyLower.includes('unsubscribe'),
-    bodyLower.includes('email preferences'),
-    bodyLower.includes('opt out'),
-    bodyLower.includes('manage your subscriptions'),
-    bodyLower.includes('view in browser'),
-    bodyLower.includes('view this email'),
-  ].filter(Boolean).length
-  if (spamBodySignals >= 2) {
-    return { isSpam: true, reason: 'newsletter' }
-  }
-
-  return { isSpam: false, reason: null }
-}
+import { detectSpam } from '@/lib/spam-detection'
+import { evaluateRouting, applyRoutingResult } from '@/lib/routing-engine'
+import { getRequestId, REQUEST_ID_HEADER } from '@/lib/request-id'
 
 export async function POST(request: Request) {
+  const requestId = await getRequestId()
   try {
     // Validate webhook secret
     if (!validateWebhookSecret(request)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized', request_id: requestId }, { status: 401 })
     }
 
     const body = await request.json()
@@ -141,19 +32,22 @@ export async function POST(request: Request) {
 
     if (!account_id) {
       return NextResponse.json(
-        { error: 'Missing required field: account_id' },
+        { error: 'Missing required field: account_id', request_id: requestId },
         { status: 400 }
       )
     }
 
     // Rate limit per account
-    if (!checkRateLimit(`webhook:email:${account_id}`)) {
-      return NextResponse.json({ error: 'Rate limit exceeded. Try again later.' }, { status: 429 })
+    if (!(await checkRateLimit(`webhook:email:${account_id}`, 100, 60))) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Try again later.', request_id: requestId },
+        { status: 429 }
+      )
     }
 
     if (!sender || (typeof sender === 'string' && sender.trim().length === 0)) {
       return NextResponse.json(
-        { error: 'Missing or empty required field: sender' },
+        { error: 'Missing or empty required field: sender', request_id: requestId },
         { status: 400 }
       )
     }
@@ -170,20 +64,20 @@ export async function POST(request: Request) {
     // Verify account exists and is active
     const { data: accountRow, error: accountError } = await supabase
       .from('accounts')
-      .select('id, name, is_active')
+      .select('id, name, is_active, spam_detection_enabled, spam_allowlist')
       .eq('id', account_id)
       .single()
 
     if (accountError || !accountRow) {
       return NextResponse.json(
-        { error: 'Account not found' },
+        { error: 'Account not found', request_id: requestId },
         { status: 404 }
       )
     }
 
     if (!accountRow.is_active) {
       return NextResponse.json(
-        { error: 'Account is not active' },
+        { error: 'Account is not active', request_id: requestId },
         { status: 403 }
       )
     }
@@ -211,8 +105,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // Spam detection — run before storing
-    const spamResult = detectSpam(senderEmail, subject, plainTextBody)
+    // Spam detection — run before storing. Honours per-account overrides:
+    //   spam_detection_enabled=false -> always {isSpam:false}
+    //   spam_allowlist sender substring match -> always {isSpam:false}
+    const spamResult = detectSpam(senderEmail, subject, plainTextBody, {
+      enabled: accountRow.spam_detection_enabled ?? true,
+      allowlist: (accountRow.spam_allowlist as string[]) ?? [],
+    })
 
     // Find or create conversation
     const conversationId = await findOrCreateConversation(supabase, {
@@ -248,11 +147,47 @@ export async function POST(request: Request) {
       .single()
 
     if (msgError || !message) {
-      console.error('Failed to store email message:', msgError)
+      logError('webhook', 'email_store_failed', msgError?.message || 'unknown insert failure', {
+        request_id: requestId,
+        account_id,
+      })
       return NextResponse.json(
-        { error: 'Failed to store message' },
+        { error: 'Failed to store message', request_id: requestId },
         { status: 500 }
       )
+    }
+
+    // Routing rules — evaluate AFTER message stored, BEFORE AI dispatch.
+    // Skip entirely for spam to avoid mutating spam threads. Fail-soft so
+    // a routing-engine error never blocks ingest.
+    if (!spamResult.isSpam) {
+      try {
+        const routingResult = await evaluateRouting({
+          channel: 'email',
+          account_id,
+          sender_email: senderEmail,
+          sender_phone: null,
+          subject: subject || null,
+          message_text: plainTextBody,
+        })
+        if (routingResult.matched_rule_ids.length > 0) {
+          const applied = await applyRoutingResult(supabase, conversationId, routingResult)
+          logInfo('webhook', 'rule_matched', `Routing matched ${routingResult.matched_rule_ids.length} rule(s)`, {
+            request_id: requestId,
+            account_id,
+            message_id: message.id,
+            conversation_id: conversationId,
+            matched_rule_ids: routingResult.matched_rule_ids,
+            applied,
+          })
+        }
+      } catch (routingErr) {
+        logError('webhook', 'routing_failed', routingErr instanceof Error ? routingErr.message : 'unknown', {
+          request_id: requestId,
+          account_id,
+          message_id: message.id,
+        })
+      }
     }
 
     // Trigger email notifications (async, non-blocking)
@@ -277,52 +212,51 @@ export async function POST(request: Request) {
 
     // Skip AI processing for spam messages (save costs)
     if (!spamResult.isSpam) {
-      // Get account settings for phase flags
       const account = await getAccountSettings(supabase, account_id)
       const origin = new URL(request.url).origin
-      let skipAIReply = false
+      // Forward the request id so /api/classify and /api/ai-reply log under
+      // the same correlation id as this webhook — one inbound email's
+      // journey shows up as a single thread in logs/Sentry.
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-Webhook-Secret': process.env.WEBHOOK_SECRET || '',
+        [REQUEST_ID_HEADER]: requestId,
+      }
 
-      // Phase 1: AI Classification (must complete before Phase 2)
+      // Phase 1 + Phase 2 are fired asynchronously so the webhook returns
+      // as soon as the message is stored. The inbound poller can then move
+      // to the next email without waiting for AI (which can take 30s+).
+      // Trade-off: if classify later flags this message as Newsletter/Marketing,
+      // the AI reply still runs (sits in pending_approval — admin can reject).
+      // Use Next's `after()` so Vercel keeps the function alive until these
+      // fetches complete — `void fetch(...)` gets killed when the serverless
+      // instance terminates after the response is sent, dropping classify/AI
+      // coverage on production (classify in particular can take 30s+).
       if (account.phase1_enabled) {
-        try {
-          const classifyRes = await fetch(`${origin}/api/classify`, {
+        after(() =>
+          fetch(`${origin}/api/classify`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || '',
-            },
+            headers,
             body: JSON.stringify({
               message_id: message.id,
               message_text: plainTextBody,
               channel: 'email',
               account_id,
             }),
-            signal: AbortSignal.timeout(30000),
-          })
-
-          // Check if classification marked it as Newsletter/Marketing → skip AI reply
-          if (classifyRes.ok) {
-            try {
-              const classifyData = await classifyRes.json()
-              if (classifyData.category === 'Newsletter/Marketing') {
-                skipAIReply = true
-              }
-            } catch { /* ignore parse errors */ }
-          }
-        } catch (classifyError) {
-          console.error(`Phase 1 classification failed [message_id=${message.id}, account_id=${account_id}, channel=email]:`, classifyError instanceof Error ? classifyError.message : classifyError)
-        }
+          }).catch((err) =>
+            console.error(
+              `Phase 1 classify dispatch failed [message_id=${message.id}]:`,
+              err instanceof Error ? err.message : err
+            )
+          )
+        )
       }
 
-      // Phase 2: AI Reply Generation — only if not classified as spam/newsletter
-      if (account.phase2_enabled && !skipAIReply) {
-        try {
-          await fetch(`${origin}/api/ai-reply`, {
+      if (account.phase2_enabled) {
+        after(() =>
+          fetch(`${origin}/api/ai-reply`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || '',
-            },
+            headers,
             body: JSON.stringify({
               message_id: message.id,
               message_text: plainTextBody,
@@ -330,24 +264,32 @@ export async function POST(request: Request) {
               account_id,
               conversation_id: conversationId,
             }),
-            signal: AbortSignal.timeout(30000),
-          })
-        } catch (replyError) {
-          console.error(`Phase 2 AI reply generation failed [message_id=${message.id}, account_id=${account_id}, channel=email]:`, replyError instanceof Error ? replyError.message : replyError)
-        }
+          }).catch((err) =>
+            console.error(
+              `Phase 2 AI reply dispatch failed [message_id=${message.id}]:`,
+              err instanceof Error ? err.message : err
+            )
+          )
+        )
       }
     }
 
-    logInfo('webhook', 'email_received', `Email from ${senderEmail}`, { account_id, message_id: message.id, is_spam: spamResult.isSpam })
+    logInfo('webhook', 'email_received', `Email from ${senderEmail}`, {
+      request_id: requestId,
+      account_id,
+      message_id: message.id,
+      is_spam: spamResult.isSpam,
+    })
     return NextResponse.json(
-      { message_id: message.id, is_spam: spamResult.isSpam },
+      { message_id: message.id, is_spam: spamResult.isSpam, request_id: requestId },
       { status: 201 }
     )
   } catch (error) {
-    console.error('Email webhook error:', error)
-    logError('webhook', 'email_error', error instanceof Error ? error.message : 'Unknown error')
+    logError('webhook', 'email_error', error instanceof Error ? error.message : 'Unknown error', {
+      request_id: requestId,
+    })
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', request_id: requestId },
       { status: 500 }
     )
   }

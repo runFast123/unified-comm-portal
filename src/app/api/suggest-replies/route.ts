@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
 import { callAI } from '@/lib/api-helpers'
+import { AIBudgetExceededError } from '@/lib/ai-usage'
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +24,39 @@ ${category ? `Category: ${category}` : ''}
 
 Example output: ["Thank you for reaching out. I'll look into this right away.", "I understand your concern. Let me check with our team and get back to you.", "Thanks for the information. Could you provide more details about your requirements?"]`
 
-    const aiResponse = await callAI(prompt, 'Generate 3 suggested replies as a JSON array.')
+    // Resolve the conversation's account so we can charge usage to it.
+    const admin = await createServiceRoleClient()
+    const { data: convRow } = await admin
+      .from('conversations')
+      .select('account_id')
+      .eq('id', conversation_id)
+      .maybeSingle()
+    const accountIdForBudget = convRow?.account_id ?? undefined
+
+    let aiResponse: string
+    try {
+      aiResponse = await callAI(prompt, 'Generate 3 suggested replies as a JSON array.', {
+        account_id: accountIdForBudget,
+        endpoint: 'suggest-replies',
+      })
+    } catch (err) {
+      if (err instanceof AIBudgetExceededError) {
+        // Soft-fall back to canned suggestions so the UI still has options
+        return NextResponse.json({
+          ai_suggestions: [
+            'Thank you for reaching out. How can I help you?',
+            "I'll look into this and get back to you shortly.",
+            'Could you provide more details so I can assist you better?',
+          ],
+          templates: [],
+          skipped: true,
+          error: 'AI budget exceeded for this account',
+          monthly_total_usd: err.monthly_total_usd,
+          budget_usd: err.budget_usd,
+        })
+      }
+      throw err
+    }
 
     let suggestions: string[] = []
     try {

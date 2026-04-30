@@ -3,7 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 /**
  * GET /api/test-connection
- * Tests connectivity to Supabase and n8n.
+ * Tests connectivity to Supabase.
  * Returns status of each service.
  */
 export async function GET() {
@@ -20,18 +20,13 @@ export async function GET() {
 
   const results: {
     supabase: { status: string; details: string; connected: boolean }
-    n8n: { status: string; details: string; connected: boolean }
     env_vars: Record<string, boolean>
   } = {
     supabase: { status: 'unchecked', details: '', connected: false },
-    n8n: { status: 'unchecked', details: '', connected: false },
     env_vars: {
       NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      N8N_BASE_URL: !!process.env.N8N_BASE_URL,
-      N8N_API_KEY: !!process.env.N8N_API_KEY,
-      N8N_WEBHOOK_SECRET: !!process.env.N8N_WEBHOOK_SECRET,
       AI_API_KEY: !!process.env.AI_API_KEY,
     },
   }
@@ -113,81 +108,7 @@ export async function GET() {
     }
   }
 
-  // ========== TEST N8N ==========
-  try {
-    const n8nUrlRaw = process.env.N8N_BASE_URL
-    const n8nKey = process.env.N8N_API_KEY
-    // Normalize: remove trailing slashes
-    const n8nUrl = n8nUrlRaw?.replace(/\/+$/, '')
-
-    if (!n8nUrl) {
-      results.n8n = {
-        status: 'error',
-        details: 'Missing N8N_BASE_URL environment variable',
-        connected: false,
-      }
-    } else if (n8nKey) {
-      // Best test: try the API directly with the key
-      const apiResponse = await fetch(`${n8nUrl}/api/v1/workflows?limit=5`, {
-        method: 'GET',
-        headers: {
-          'X-N8N-API-KEY': n8nKey,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(15000),
-      }).catch(() => null)
-
-      if (apiResponse && apiResponse.ok) {
-        const data = await apiResponse.json()
-        const workflowCount = data?.data?.length ?? data?.count ?? '?'
-        results.n8n = {
-          status: 'connected',
-          details: `Connected to n8n at ${n8nUrl}. API key valid. ${workflowCount} workflows found.`,
-          connected: true,
-        }
-      } else if (apiResponse) {
-        results.n8n = {
-          status: 'partial',
-          details: `n8n is reachable at ${n8nUrl} but API key may be invalid (HTTP ${apiResponse.status}). Check N8N_API_KEY.`,
-          connected: true,
-        }
-      } else {
-        results.n8n = {
-          status: 'error',
-          details: `Cannot reach n8n at ${n8nUrl}. Make sure n8n is running and the URL is correct.`,
-          connected: false,
-        }
-      }
-    } else {
-      // No API key — try health check only
-      const healthResponse = await fetch(`${n8nUrl}/healthz`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(10000),
-      }).catch(() => null)
-
-      if (healthResponse && (healthResponse.ok || healthResponse.status < 500)) {
-        results.n8n = {
-          status: 'partial',
-          details: `n8n is reachable at ${n8nUrl} but N8N_API_KEY is not set. Cannot query workflows.`,
-          connected: true,
-        }
-      } else {
-        results.n8n = {
-          status: 'error',
-          details: `Cannot reach n8n at ${n8nUrl} and N8N_API_KEY is not set.`,
-          connected: false,
-        }
-      }
-    }
-  } catch (error) {
-    results.n8n = {
-      status: 'error',
-      details: `n8n connection error: ${error instanceof Error ? error.message : String(error)}`,
-      connected: false,
-    }
-  }
-
-  const allConnected = results.supabase.connected && results.n8n.connected
+  const allConnected = results.supabase.connected
   return NextResponse.json(
     {
       overall: allConnected ? 'all_connected' : 'issues_found',

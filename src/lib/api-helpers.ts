@@ -1,37 +1,40 @@
 import crypto from 'crypto'
 import { createServiceRoleClient } from '@/lib/supabase-server'
+import { checkRateLimit as checkRateLimitDb } from '@/lib/rate-limiter'
+import { findOrCreateContact } from '@/lib/contacts'
+import { logError } from '@/lib/logger'
+import {
+  assertWithinBudget,
+  recordAIUsage,
+  approxTokensFromText,
+  type AIEndpoint,
+} from '@/lib/ai-usage'
 import type { Account } from '@/types/database'
 
+// Re-export so callers can `import { AIBudgetExceededError } from '@/lib/api-helpers'`
+export { AIBudgetExceededError } from '@/lib/ai-usage'
+
 // ─── Rate Limiter ───────────────────────────────────────────────────
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
-const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minute
-const RATE_LIMIT_MAX = 100 // max requests per window per key
+//
+// Thin boolean wrapper around the DB-backed limiter in `@/lib/rate-limiter`.
+// Kept here so existing callers keep the familiar shape — they just need to
+// `await` the result. For new code prefer importing `checkRateLimit` (or the
+// `RATE_LIMITS` presets) directly from `@/lib/rate-limiter` to get the full
+// `{ allowed, remaining, reset_at }` result.
 
-export function checkRateLimit(key: string): boolean {
-  const now = Date.now()
-  const entry = rateLimitStore.get(key)
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
-    return true
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return false // rate limited
-  }
-
-  entry.count++
-  return true
-}
-
-// Clean up stale entries every 5 minutes
-if (typeof setInterval !== 'undefined') {
-  setInterval(() => {
-    const now = Date.now()
-    for (const [key, entry] of rateLimitStore) {
-      if (now > entry.resetAt) rateLimitStore.delete(key)
-    }
-  }, 300_000)
+/**
+ * Returns `true` if the request is allowed, `false` if it should be rejected.
+ *
+ * Defaults mirror the original in-process limiter: 100 requests per 60s.
+ * Fails open on DB errors — see `@/lib/rate-limiter` for details.
+ */
+export async function checkRateLimit(
+  key: string,
+  maxPerWindow = 100,
+  windowSeconds = 60
+): Promise<boolean> {
+  const result = await checkRateLimitDb(key, maxPerWindow, windowSeconds)
+  return result.allowed
 }
 
 // ─── Webhook Secret Validation ──────────────────────────────────────
@@ -40,9 +43,9 @@ if (typeof setInterval !== 'undefined') {
  */
 export function validateWebhookSecret(request: Request): boolean {
   const secret = request.headers.get('x-webhook-secret')
-  const expectedSecret = process.env.N8N_WEBHOOK_SECRET
+  const expectedSecret = process.env.WEBHOOK_SECRET
   if (!expectedSecret) {
-    console.error('N8N_WEBHOOK_SECRET is not configured')
+    console.error('WEBHOOK_SECRET is not configured')
     return false
   }
   if (!secret) return false
@@ -164,6 +167,36 @@ export async function findOrCreateConversation(
     throw new Error(`Failed to create conversation: ${error?.message}`)
   }
 
+  // ─── Contact link (best-effort, fire-and-forget on failure) ─────────
+  // For NEW conversations only — existing rows already have contact_id set
+  // either by the backfill or by a previous run of this function. We don't
+  // want to disturb that. A failure here must NEVER break webhook ingest,
+  // so we wrap in try/catch and log via the structured logger.
+  try {
+    const contactId = await findOrCreateContact(supabase, {
+      email: params.participant_email,
+      phone: params.participant_phone,
+      display_name: params.participant_name,
+    })
+    if (contactId) {
+      await supabase
+        .from('conversations')
+        .update({ contact_id: contactId })
+        .eq('id', newConv.id)
+    }
+  } catch (contactErr) {
+    logError(
+      'webhook',
+      'contact_link_failed',
+      contactErr instanceof Error ? contactErr.message : 'unknown contact upsert failure',
+      {
+        conversation_id: newConv.id,
+        account_id: params.account_id,
+        channel: params.channel,
+      }
+    )
+  }
+
   return newConv.id
 }
 
@@ -238,12 +271,40 @@ const AI_MAX_RETRIES = 2
 const AI_RETRY_DELAYS = [1000, 3000] // exponential backoff
 
 /**
+ * Optional context for budget tracking. When `account_id` is supplied:
+ *   1. The per-account monthly budget is checked BEFORE the AI call;
+ *      throws `AIBudgetExceededError` when over.
+ *   2. After a successful call, usage is recorded into `ai_usage` so
+ *      the running monthly total stays current.
+ *
+ * `account_id` is OPTIONAL so existing callers don't break — the
+ * budget machinery is a no-op when omitted.
+ */
+export interface CallAIContext {
+  account_id?: string
+  endpoint?: AIEndpoint
+  request_id?: string
+}
+
+/**
  * Calls any OpenAI-compatible AI API with timeout and retry logic.
+ *
+ * When `ctx.account_id` is provided, the call is gated by the account's
+ * monthly AI budget and usage is recorded after success. Routes should
+ * catch `AIBudgetExceededError` and return a graceful 200 "skipped" response.
  */
 export async function callAI(
   systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  ctx: CallAIContext = {}
 ): Promise<string> {
+  // ── Budget gate (BEFORE the AI call) ───────────────────────────────
+  // Skipped when no account_id is supplied. Throws AIBudgetExceededError
+  // when the cap is reached — caller is expected to catch + skip gracefully.
+  if (ctx.account_id) {
+    await assertWithinBudget(ctx.account_id)
+  }
+
   const config = await getAIConfig()
   let lastError: Error | null = null
 
@@ -278,7 +339,38 @@ export async function callAI(
       }
 
       const data = await response.json()
-      return data.choices?.[0]?.message?.content || ''
+      const content = data.choices?.[0]?.message?.content || ''
+
+      // ── Usage recording (AFTER successful AI call) ─────────────────
+      // Best-effort — recordAIUsage swallows DB errors internally.
+      if (ctx.account_id) {
+        const inputTokens =
+          Number(data.usage?.prompt_tokens) ||
+          approxTokensFromText(systemPrompt) + approxTokensFromText(userMessage)
+        const outputTokens =
+          Number(data.usage?.completion_tokens) || approxTokensFromText(content)
+        try {
+          await recordAIUsage({
+            account_id: ctx.account_id,
+            endpoint: ctx.endpoint ?? 'classify',
+            model: config.model,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            request_id: ctx.request_id,
+          })
+        } catch (recErr) {
+          // Belt-and-braces: recordAIUsage is supposed to swallow its own
+          // errors but if anything escapes we eat it here so AI flow continues.
+          logError(
+            'ai',
+            'usage_record_unexpected_error',
+            recErr instanceof Error ? recErr.message : 'unknown',
+            { account_id: ctx.account_id }
+          )
+        }
+      }
+
+      return content
     } catch (err: any) {
       lastError = err
       const isTimeout = err.name === 'AbortError'
@@ -300,7 +392,14 @@ export async function callAI(
 /**
  * Verifies that a user has access to a specific account.
  * - Admins can access all accounts.
- * - Non-admin users can only access their own account (users.account_id).
+ * - Non-admin users can access their own account, or any sibling account
+ *   sharing the same `company_id` (multi-channel grouping).
+ *
+ * Legacy fallback: if EITHER the user's account or the requested account has
+ * a NULL `company_id` (un-backfilled / freshly inserted without a company),
+ * fall back to the OLD name-substring heuristic — but emit `console.warn` so
+ * the regression is visible in logs and we can spot rows missed by backfill.
+ *
  * Returns true if access is allowed, false otherwise.
  */
 export async function verifyAccountAccess(
@@ -318,30 +417,52 @@ export async function verifyAccountAccess(
     return false
   }
 
-  // Admins can access all accounts
+  // Admins can access all accounts — fast path, no DB lookup needed.
   if (user.role === 'admin') {
     return true
   }
 
-  // Non-admin users can access their own account + sibling channel accounts
+  // Non-admins must be tied to an account at all.
+  if (!user.account_id) {
+    return false
+  }
+
+  // Same account is always allowed.
   if (user.account_id === accountId) {
     return true
   }
 
-  // Check sibling accounts (same company, different channel)
-  if (user.account_id) {
-    const { data: myAccount } = await supabase.from('accounts').select('name').eq('id', user.account_id).maybeSingle()
-    if (myAccount?.name) {
-      const baseName = myAccount.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-      const { data: targetAccount } = await supabase.from('accounts').select('name').eq('id', accountId).maybeSingle()
-      if (targetAccount?.name) {
-        const targetBase = targetAccount.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
-        if (baseName === targetBase) return true
-      }
-    }
+  // Compare company_id across the two accounts.
+  const { data: rows } = await supabase
+    .from('accounts')
+    .select('id, name, company_id')
+    .in('id', [user.account_id, accountId])
+
+  const myAccount = rows?.find((r) => r.id === user.account_id)
+  const targetAccount = rows?.find((r) => r.id === accountId)
+
+  // If either account doesn't exist, deny.
+  if (!myAccount || !targetAccount) {
+    return false
   }
 
-  return false
+  // Happy path: both have a company_id and they match.
+  if (myAccount.company_id && targetAccount.company_id) {
+    return myAccount.company_id === targetAccount.company_id
+  }
+
+  // Legacy fallback: at least one row hasn't been backfilled with a company_id.
+  // Use the old name-substring heuristic but warn so we can spot it in logs.
+  console.warn(
+    `[verifyAccountAccess] Falling back to name-substring match — missing company_id ` +
+      `(user_account=${user.account_id} company_id=${myAccount.company_id ?? 'null'}; ` +
+      `target_account=${accountId} company_id=${targetAccount.company_id ?? 'null'}). ` +
+      `Run/verify the companies backfill migration.`
+  )
+  if (!myAccount.name || !targetAccount.name) return false
+  const stripChannelSuffix = (n: string) =>
+    n.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim()
+  return stripChannelSuffix(myAccount.name) === stripChannelSuffix(targetAccount.name)
 }
 
 // ─── HTML Stripping ─────────────────────────────────────────────────

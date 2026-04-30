@@ -10,12 +10,17 @@ export interface SkeletonProps {
   rounded?: string
 }
 
+/**
+ * Low-level pulsing placeholder block. Default visual matches the design
+ * tokens used in KPICard / ReportCard — soft gray with generous radius.
+ * Pass className overrides (e.g. `h-4 w-20 rounded-full`) for specific shapes.
+ */
 export function Skeleton({ className, width, height, rounded }: SkeletonProps) {
   return (
     <div
       className={cn(
-        'animate-pulse bg-gray-200',
-        rounded ?? 'rounded-md',
+        'animate-pulse bg-gray-200/70',
+        rounded ?? 'rounded',
         className
       )}
       style={{ width, height }}
@@ -23,15 +28,72 @@ export function Skeleton({ className, width, height, rounded }: SkeletonProps) {
   )
 }
 
+// ─── Text Skeleton ───────────────────────────────────────────────
+export interface SkeletonTextProps {
+  /** Number of lines to render (default 3). */
+  lines?: number
+  className?: string
+}
+
+/**
+ * Renders N lines of varying-width placeholder text. Widths cycle so the
+ * paragraph doesn't look like a uniform block.
+ */
+export function SkeletonText({ lines = 3, className }: SkeletonTextProps) {
+  const widths = ['w-11/12', 'w-full', 'w-9/12', 'w-10/12', 'w-8/12']
+  return (
+    <div className={cn('space-y-2', className)}>
+      {Array.from({ length: lines }).map((_, i) => (
+        <Skeleton
+          key={i}
+          className={cn('h-3', widths[i % widths.length])}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ─── Card Skeleton (mimics KPI card) ─────────────────────────────
+export interface SkeletonCardProps {
+  className?: string
+}
+
+/**
+ * Card-shaped placeholder styled to mirror KPICard — rounded-2xl border,
+ * soft shadow, label + large value + subtitle stack, icon chip in the corner.
+ */
+export function SkeletonCard({ className }: SkeletonCardProps) {
+  return (
+    <div
+      className={cn(
+        'relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white p-5',
+        'shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]',
+        className
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <Skeleton className="h-3 w-24 rounded-full" />
+        <Skeleton className="h-9 w-9 rounded-xl" />
+      </div>
+      <Skeleton className="mt-3 h-8 w-20 rounded" />
+      <div className="mt-2 flex items-center gap-2">
+        <Skeleton className="h-4 w-14 rounded-full" />
+        <Skeleton className="h-3 w-20 rounded" />
+      </div>
+    </div>
+  )
+}
+
 // ─── Inbox Row Skeleton ──────────────────────────────────────────
+/**
+ * One row of the inbox list — avatar + two text lines + trailing meta.
+ * Used in the inbox page loading state so the layout doesn't shift in.
+ */
 export function InboxRowSkeleton() {
   return (
     <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
-      {/* Checkbox */}
       <Skeleton className="h-4 w-4 rounded" />
-      {/* Avatar */}
       <Skeleton className="h-9 w-9 flex-shrink-0 rounded-full" />
-      {/* Content lines */}
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <Skeleton className="h-4 w-28 rounded" />
@@ -39,7 +101,6 @@ export function InboxRowSkeleton() {
         </div>
         <Skeleton className="h-3 w-3/4 rounded" />
       </div>
-      {/* Badge / time */}
       <div className="flex flex-col items-end gap-1.5">
         <Skeleton className="h-3 w-12 rounded" />
         <Skeleton className="h-5 w-14 rounded-full" />
@@ -48,29 +109,18 @@ export function InboxRowSkeleton() {
   )
 }
 
-// ─── KPI Card Skeleton ───────────────────────────────────────────
-export function KPICardSkeleton() {
-  return (
-    <div className="relative rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      {/* Accent bar */}
-      <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-gray-200" />
-      <div className="flex items-start justify-between">
-        <div className="flex-1 space-y-3">
-          <Skeleton className="h-4 w-24 rounded" />
-          <Skeleton className="h-8 w-16 rounded" />
-          <Skeleton className="h-3 w-20 rounded" />
-        </div>
-        <Skeleton className="h-10 w-10 rounded-lg" />
-      </div>
-    </div>
-  )
-}
+// ─── KPI Card Skeleton (alias) ───────────────────────────────────
+/** Legacy alias kept so older imports don't break. Prefer SkeletonCard. */
+export const KPICardSkeleton = SkeletonCard
 
 // ─── Conversation Skeleton ───────────────────────────────────────
+/**
+ * Alternating message-bubble skeleton used in the conversation detail
+ * loading state — two inbound bubbles on the left, two outbound on the right.
+ */
 export function ConversationSkeleton() {
   return (
     <div className="space-y-4 p-4">
-      {/* Incoming bubble */}
       <div className="flex items-start gap-2">
         <Skeleton className="h-8 w-8 flex-shrink-0 rounded-full" />
         <div className="space-y-1.5">
@@ -78,14 +128,12 @@ export function ConversationSkeleton() {
           <Skeleton className="h-3 w-16 rounded" />
         </div>
       </div>
-      {/* Outgoing bubble */}
       <div className="flex items-start justify-end gap-2">
-        <div className="space-y-1.5 flex flex-col items-end">
+        <div className="flex flex-col items-end space-y-1.5">
           <Skeleton className="h-12 w-48 rounded-2xl rounded-tr-sm" />
           <Skeleton className="h-3 w-12 rounded" />
         </div>
       </div>
-      {/* Incoming bubble */}
       <div className="flex items-start gap-2">
         <Skeleton className="h-8 w-8 flex-shrink-0 rounded-full" />
         <div className="space-y-1.5">
@@ -93,9 +141,8 @@ export function ConversationSkeleton() {
           <Skeleton className="h-3 w-16 rounded" />
         </div>
       </div>
-      {/* Outgoing bubble */}
       <div className="flex items-start justify-end gap-2">
-        <div className="space-y-1.5 flex flex-col items-end">
+        <div className="flex flex-col items-end space-y-1.5">
           <Skeleton className="h-10 w-40 rounded-2xl rounded-tr-sm" />
           <Skeleton className="h-3 w-12 rounded" />
         </div>

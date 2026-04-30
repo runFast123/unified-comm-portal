@@ -1,0 +1,281 @@
+import { createServiceRoleClient } from '@/lib/supabase-server'
+import { encrypt, decrypt } from '@/lib/encryption'
+import { logError } from '@/lib/logger'
+
+export type Channel = 'email' | 'teams' | 'whatsapp'
+
+// ─── Config shapes per channel ────────────────────────────────────────
+
+export interface EmailConfig {
+  smtp_host: string
+  smtp_port: number
+  smtp_secure: boolean
+  smtp_user: string
+  smtp_password: string
+  smtp_from_name: string
+  // IMAP (inbound polling). Optional — if absent, this account is send-only.
+  imap_host?: string
+  imap_port?: number
+  imap_secure?: boolean
+  imap_user?: string
+  imap_password?: string
+  // Gmail OAuth (optional). When auth_mode === 'gmail_oauth', the app uses
+  // XOAUTH2 (nodemailer) for SMTP send and ImapFlow accessToken for IMAP
+  // receive — no app password needed. Protocol stays SMTP+IMAP, only the
+  // authentication mechanism changes. Default (undefined) = 'smtp'.
+  auth_mode?: 'smtp' | 'gmail_oauth'
+  google_refresh_token?: string
+  google_access_token?: string // optional cache
+  google_access_token_expires_at?: number // epoch ms
+  google_user_email?: string // display ("Connected as X") + XOAUTH2 user
+  google_user_id?: string // sub claim from userinfo
+  google_connected_at?: number // epoch ms
+}
+
+export interface TeamsConfig {
+  azure_tenant_id: string
+  azure_client_id: string
+  azure_client_secret: string
+  // Delegated (OAuth) fields — optional. If present, the app uses the
+  // delegated flow (user-scoped Graph, e.g. /me/chats) instead of the
+  // client-credentials flow. This is opt-in per account and bypasses the
+  // "Protected API Access" gate on chat messages.
+  auth_mode?: 'app' | 'delegated'
+  delegated_refresh_token?: string
+  delegated_access_token?: string // optional cache
+  delegated_access_token_expires_at?: number // epoch ms
+  delegated_user_email?: string // display only ("Connected as X")
+  delegated_user_id?: string // Graph user id of the connected user
+  delegated_connected_at?: number // epoch ms
+}
+
+export interface WhatsAppConfig {
+  phone_number_id: string
+  access_token: string
+  verify_token: string
+  graph_version: string
+}
+
+export type ChannelConfigMap = {
+  email: EmailConfig
+  teams: TeamsConfig
+  whatsapp: WhatsAppConfig
+}
+
+// Fields that should never be returned to the UI in clear text
+const SECRET_FIELDS: Record<Channel, string[]> = {
+  email: ['smtp_password', 'imap_password', 'google_refresh_token', 'google_access_token'],
+  teams: ['azure_client_secret', 'delegated_refresh_token', 'delegated_access_token'],
+  whatsapp: ['access_token', 'verify_token'],
+}
+
+// ─── Env fallback ─────────────────────────────────────────────────────
+
+function envEmailConfig(): EmailConfig | null {
+  const host = process.env.SMTP_HOST
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASSWORD
+  if (!host || !user || !pass) return null
+  const imapHost = process.env.IMAP_HOST
+  const imapUser = process.env.IMAP_USER || user
+  const imapPass = process.env.IMAP_PASSWORD || pass
+  return {
+    smtp_host: host,
+    smtp_port: Number(process.env.SMTP_PORT || 465),
+    smtp_secure: process.env.SMTP_SECURE !== 'false',
+    smtp_user: user,
+    smtp_password: pass,
+    smtp_from_name: process.env.SMTP_FROM_NAME || 'Unified Comm Portal',
+    imap_host: imapHost || undefined,
+    imap_port: imapHost ? Number(process.env.IMAP_PORT || 993) : undefined,
+    imap_secure: imapHost ? process.env.IMAP_SECURE !== 'false' : undefined,
+    imap_user: imapHost ? imapUser : undefined,
+    imap_password: imapHost ? imapPass : undefined,
+  }
+}
+
+function envTeamsConfig(): TeamsConfig | null {
+  const tenant = process.env.AZURE_TENANT_ID
+  const clientId = process.env.AZURE_CLIENT_ID
+  const secret = process.env.AZURE_CLIENT_SECRET
+  if (!tenant || !clientId || !secret) return null
+  return { azure_tenant_id: tenant, azure_client_id: clientId, azure_client_secret: secret }
+}
+
+function envWhatsAppConfig(): WhatsAppConfig | null {
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const token = process.env.WHATSAPP_ACCESS_TOKEN
+  if (!phoneId || !token) return null
+  return {
+    phone_number_id: phoneId,
+    access_token: token,
+    verify_token: process.env.WHATSAPP_VERIFY_TOKEN || '',
+    graph_version: process.env.WHATSAPP_GRAPH_VERSION || 'v21.0',
+  }
+}
+
+function envConfig<C extends Channel>(channel: C): ChannelConfigMap[C] | null {
+  if (channel === 'email') return envEmailConfig() as ChannelConfigMap[C] | null
+  if (channel === 'teams') return envTeamsConfig() as ChannelConfigMap[C] | null
+  return envWhatsAppConfig() as ChannelConfigMap[C] | null
+}
+
+// ─── DB lookup (with env fallback) ────────────────────────────────────
+
+/**
+ * Resolve credentials for an account+channel. Order of precedence:
+ *   1. channel_configs row (decrypted) for this account+channel
+ *   2. env vars (global default)
+ * Returns null if neither is configured.
+ */
+export async function getChannelConfig<C extends Channel>(
+  accountId: string | null,
+  channel: C
+): Promise<ChannelConfigMap[C] | null> {
+  if (accountId) {
+    const supabase = await createServiceRoleClient()
+    const { data } = await supabase
+      .from('channel_configs')
+      .select('config_encrypted')
+      .eq('account_id', accountId)
+      .eq('channel', channel)
+      .maybeSingle()
+
+    if (data?.config_encrypted) {
+      try {
+        const cfg = JSON.parse(decrypt(data.config_encrypted)) as ChannelConfigMap[C]
+        // Honour the UI promise that IMAP user/password default to SMTP values
+        // when left blank. Applies only to email configs.
+        if (channel === 'email') {
+          const e = cfg as unknown as EmailConfig
+          if (e.imap_host) {
+            if (!e.imap_user) e.imap_user = e.smtp_user
+            // Only inherit the SMTP password when (a) we're in SMTP auth
+            // mode (Gmail OAuth legitimately has no IMAP password — it uses
+            // the token instead) AND (b) the IMAP host is the same server
+            // as the SMTP host. Copying a Gmail app password to a
+            // third-party IMAP server would silently leak credentials to
+            // somewhere they weren't issued for.
+            if (
+              !e.imap_password &&
+              e.auth_mode !== 'gmail_oauth' &&
+              e.imap_host === e.smtp_host
+            ) {
+              e.imap_password = e.smtp_password
+            }
+            if (e.imap_port === undefined || e.imap_port === null) e.imap_port = 993
+            if (e.imap_secure === undefined || e.imap_secure === null) e.imap_secure = true
+          }
+        }
+        return cfg
+      } catch (err) {
+        // Loud decrypt failure — a broken DB row is NOT the same as "no
+        // row", and falling back to env defaults silently has masked
+        // encryption-key rotations in the past. Emit an audit log so an
+        // admin notices, then fall through to env as a last-resort.
+        console.error(`Failed to decrypt channel config for ${accountId}/${channel}:`, err)
+        try {
+          await logError(
+            'system',
+            'channel_config.decrypt_failed',
+            `Could not decrypt channel config — encryption key may have rotated`,
+            {
+              account_id: accountId,
+              channel,
+              error: err instanceof Error ? err.message : String(err),
+            }
+          )
+        } catch { /* never break caller on logging failure */ }
+        // fall through to env
+      }
+    }
+  }
+  return envConfig(channel)
+}
+
+/** Upsert encrypted credentials for an account+channel. */
+export async function saveChannelConfig<C extends Channel>(
+  accountId: string,
+  channel: C,
+  config: ChannelConfigMap[C]
+): Promise<void> {
+  const supabase = await createServiceRoleClient()
+  const ciphertext = encrypt(JSON.stringify(config))
+  const { error } = await supabase
+    .from('channel_configs')
+    .upsert(
+      { account_id: accountId, channel, config_encrypted: ciphertext },
+      { onConflict: 'account_id,channel' }
+    )
+  if (error) throw new Error(`Failed to save channel config: ${error.message}`)
+}
+
+/** Fetch config with secrets masked, for display in the admin UI. */
+export async function getMaskedChannelConfig<C extends Channel>(
+  accountId: string,
+  channel: C
+): Promise<{
+  source: 'db' | 'env' | 'none' | 'db_broken'
+  config: Partial<ChannelConfigMap[C]> | null
+}> {
+  const supabase = await createServiceRoleClient()
+  const { data } = await supabase
+    .from('channel_configs')
+    .select('config_encrypted')
+    .eq('account_id', accountId)
+    .eq('channel', channel)
+    .maybeSingle()
+
+  let raw: ChannelConfigMap[C] | null = null
+  let source: 'db' | 'env' | 'none' | 'db_broken' = 'none'
+  let dbBroken = false
+  if (data?.config_encrypted) {
+    try {
+      raw = JSON.parse(decrypt(data.config_encrypted)) as ChannelConfigMap[C]
+      source = 'db'
+    } catch (err) {
+      // Row exists but we can't decrypt it (encryption key rotated, corrupted
+      // ciphertext, etc). Don't silently mask this as "env" — that hides
+      // a real problem the admin needs to see.
+      dbBroken = true
+      console.error(`Masked config decrypt failed for ${accountId}/${channel}:`, err)
+      try {
+        await logError(
+          'system',
+          'channel_config.decrypt_failed',
+          `Admin UI hit undecryptable channel_config row`,
+          {
+            account_id: accountId,
+            channel,
+            error: err instanceof Error ? err.message : String(err),
+          }
+        )
+      } catch { /* ignore */ }
+    }
+  }
+  if (!raw) {
+    raw = envConfig(channel)
+    if (raw) source = 'env'
+  }
+  // If there's a broken DB row, surface that even when env fallback would
+  // otherwise apply — the admin should repair the row, not silently run
+  // against stale env defaults.
+  if (dbBroken) source = 'db_broken'
+  if (!raw) return { source, config: null }
+
+  const masked: Record<string, unknown> = { ...raw }
+  for (const f of SECRET_FIELDS[channel]) {
+    if (masked[f]) masked[f] = '••••••••'
+  }
+  return { source, config: masked as Partial<ChannelConfigMap[C]> }
+}
+
+export async function deleteChannelConfig(accountId: string, channel: Channel): Promise<void> {
+  const supabase = await createServiceRoleClient()
+  const { error } = await supabase
+    .from('channel_configs')
+    .delete()
+    .eq('account_id', accountId)
+    .eq('channel', channel)
+  if (error) throw new Error(`Failed to delete channel config: ${error.message}`)
+}

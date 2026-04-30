@@ -13,7 +13,6 @@ import {
   Mail,
   Phone,
   FileSpreadsheet,
-  Workflow,
   Database,
   Brain,
   Server,
@@ -71,10 +70,9 @@ export default function HealthPage() {
 
     const newServices: ServiceCard[] = []
 
-    // ---- Check Supabase & n8n & env vars via /api/test-connection ----
+    // ---- Check Supabase & env vars via /api/test-connection ----
     let testData: {
       supabase?: { status: string; details: string; connected: boolean }
-      n8n?: { status: string; details: string; connected: boolean }
       env_vars?: Record<string, boolean>
     } = {}
 
@@ -117,40 +115,6 @@ export default function HealthPage() {
           label: 'Service Role Key',
           status: testData.env_vars?.SUPABASE_SERVICE_ROLE_KEY ? 'healthy' : 'warning',
           detail: testData.env_vars?.SUPABASE_SERVICE_ROLE_KEY ? 'Service role key configured' : 'Service role key not set (optional)',
-        },
-      ],
-    })
-
-    // n8n service card
-    const n8nStatus = testData.n8n?.connected
-      ? testData.n8n.status === 'connected'
-        ? 'healthy'
-        : 'warning'
-      : 'error'
-
-    newServices.push({
-      name: 'n8n Automation',
-      icon: <Workflow className="h-6 w-6 text-orange-500" />,
-      checks: [
-        {
-          label: 'Connection',
-          status: n8nStatus as HealthStatus,
-          detail: testData.n8n?.details || 'Unable to reach n8n',
-        },
-        {
-          label: 'Base URL',
-          status: testData.env_vars?.N8N_BASE_URL ? 'healthy' : 'error',
-          detail: testData.env_vars?.N8N_BASE_URL ? 'N8N_BASE_URL is set' : 'Missing N8N_BASE_URL',
-        },
-        {
-          label: 'API Key',
-          status: testData.env_vars?.N8N_API_KEY ? 'healthy' : 'warning',
-          detail: testData.env_vars?.N8N_API_KEY ? 'N8N_API_KEY configured' : 'N8N_API_KEY not set',
-        },
-        {
-          label: 'Webhook Secret',
-          status: testData.env_vars?.N8N_WEBHOOK_SECRET ? 'healthy' : 'warning',
-          detail: testData.env_vars?.N8N_WEBHOOK_SECRET ? 'Webhook secret configured' : 'Webhook secret not set',
         },
       ],
     })

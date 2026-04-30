@@ -20,13 +20,20 @@ import {
   LogOut,
   MessageSquare,
   FileText,
+  KeyRound,
+  GitBranch,
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  Bookmark,
 } from 'lucide-react'
 import { signOut } from '@/lib/auth-actions'
 import { useRealtimeMessages } from '@/hooks/useRealtimeMessages'
-import type { User } from '@/types/database'
+import type { User, SavedView } from '@/types/database'
+import { SavedViewModal, getSavedViewIcon } from '@/components/inbox/saved-view-modal'
 
 interface SidebarProps {
   user: Pick<User, 'email' | 'full_name' | 'role' | 'account_id'>
@@ -49,6 +56,8 @@ const mainNavItems = [
 const adminNavItems = [
   { label: 'Account Settings', href: '/admin/accounts', icon: Settings },
   { label: 'Channels', href: '/admin/channels', icon: Plug },
+  { label: 'Routing', href: '/admin/routing', icon: GitBranch },
+  { label: 'Integrations', href: '/admin/integrations', icon: KeyRound },
   { label: 'AI Settings', href: '/admin/ai-settings', icon: Brain },
   { label: 'Notifications', href: '/admin/notifications', icon: Bell },
   { label: 'System Health', href: '/admin/health', icon: Activity },
@@ -63,6 +72,44 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('sidebar-collapsed') === 'true'
   })
+
+  // ── Saved views (smart inboxes) ────────────────────────────────────
+  const [savedViews, setSavedViews] = useState<SavedView[]>([])
+  const [savedViewsOpen, setSavedViewsOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem('sidebar-saved-views-open') !== 'false'
+  })
+  const [savedViewsLoading, setSavedViewsLoading] = useState(false)
+  const [showSavedViewModal, setShowSavedViewModal] = useState(false)
+
+  const fetchSavedViews = useCallback(() => {
+    setSavedViewsLoading(true)
+    fetch('/api/saved-views')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data?.views)) setSavedViews(data.views as SavedView[])
+      })
+      .catch(() => {/* silent — section just shows empty + new view */})
+      .finally(() => setSavedViewsLoading(false))
+  }, [])
+
+  useEffect(() => {
+    fetchSavedViews()
+    // Refresh whenever the inbox saves/deletes views (custom event from inbox).
+    const onChanged = () => fetchSavedViews()
+    if (typeof window !== 'undefined') {
+      window.addEventListener('saved-views:changed', onChanged)
+      return () => window.removeEventListener('saved-views:changed', onChanged)
+    }
+  }, [fetchSavedViews])
+
+  const toggleSavedViewsOpen = () => {
+    const next = !savedViewsOpen
+    setSavedViewsOpen(next)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sidebar-saved-views-open', String(next))
+    }
+  }
 
   const toggleCollapsed = () => {
     const next = !collapsed
@@ -175,6 +222,94 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
             </Link>
           ))}
 
+          {/* Saved Views section — collapsible, sits between Inbox and Admin */}
+          <div className={collapsed ? 'pt-4 pb-1 px-2' : 'pt-5 pb-1 px-3'}>
+            {!collapsed ? (
+              <button
+                type="button"
+                onClick={toggleSavedViewsOpen}
+                className="flex w-full items-center justify-between rounded-md px-1 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-sidebar-foreground transition-colors"
+                aria-expanded={savedViewsOpen}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Bookmark className="h-3.5 w-3.5" />
+                  Saved views
+                </span>
+                {savedViewsOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </button>
+            ) : (
+              <div className="border-t border-sidebar-border" />
+            )}
+          </div>
+
+          {savedViewsOpen && (
+            <div className={collapsed ? 'space-y-1' : 'space-y-0.5'}>
+              {savedViews.map((sv) => {
+                const SVIcon = getSavedViewIcon(sv.icon)
+                const href = `/inbox?view=${sv.id}`
+                const active = pathname === '/inbox' && typeof window !== 'undefined' &&
+                  new URLSearchParams(window.location.search).get('view') === sv.id
+                return (
+                  <Link
+                    key={sv.id}
+                    href={href}
+                    onClick={onClose}
+                    title={collapsed ? sv.name : undefined}
+                    className={`relative flex items-center rounded-lg text-sm font-medium transition-colors ${
+                      collapsed ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'
+                    } ${
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    }`}
+                  >
+                    <SVIcon className="h-4 w-4 flex-shrink-0" />
+                    {!collapsed && (
+                      <span className="flex-1 truncate">{sv.name}</span>
+                    )}
+                    {!collapsed && sv.is_shared && (
+                      <span
+                        className="text-[10px] uppercase tracking-wider text-muted-foreground/70"
+                        title="Shared with company"
+                      >
+                        shared
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
+              {!collapsed && savedViews.length === 0 && !savedViewsLoading && (
+                <p className="px-3 py-1 text-xs italic text-muted-foreground">
+                  No saved views yet
+                </p>
+              )}
+              {!collapsed && (
+                <button
+                  type="button"
+                  onClick={() => setShowSavedViewModal(true)}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                >
+                  <Plus className="h-4 w-4 flex-shrink-0" />
+                  <span>New view</span>
+                </button>
+              )}
+              {collapsed && (
+                <button
+                  type="button"
+                  onClick={() => setShowSavedViewModal(true)}
+                  title="New saved view"
+                  className="flex w-full items-center justify-center rounded-lg px-2 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                >
+                  <Plus className="h-4 w-4 flex-shrink-0" />
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Admin Section */}
           {user.role === 'admin' && (
             <>
@@ -203,6 +338,28 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
             </>
           )}
         </nav>
+
+        {/* Keyboard shortcuts hint — matches the KPICard chip style. */}
+        {!collapsed && (
+          <div className="flex justify-end border-t border-sidebar-border px-3 pt-2 pb-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('shortcuts:open'))
+                }
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-100"
+              title="View keyboard shortcuts"
+              aria-label="View keyboard shortcuts"
+            >
+              <kbd className="rounded-md border border-teal-200 bg-white px-1 py-0 text-[10px] font-semibold text-teal-700 shadow-sm">
+                ?
+              </kbd>
+              <span>shortcuts</span>
+            </button>
+          </div>
+        )}
 
         {/* Collapse toggle — desktop only */}
         <div className="hidden lg:flex border-t border-sidebar-border p-2">
@@ -245,6 +402,18 @@ export function Sidebar({ user, pendingCount, open, onClose }: SidebarProps) {
           </form>
         </div>
       </aside>
+
+      {/* Saved-view create modal — mounted via portal so it works regardless of sidebar collapse state */}
+      <SavedViewModal
+        open={showSavedViewModal}
+        onClose={() => setShowSavedViewModal(false)}
+        onSaved={() => {
+          fetchSavedViews()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('saved-views:changed'))
+          }
+        }}
+      />
     </>
   )
 }

@@ -1,509 +1,257 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
-  Search,
-  RefreshCw,
-  Users,
-  UserPlus,
-  Crown,
-  Tag,
-  Loader2,
   AlertTriangle,
-  Eye,
-  MessageSquare,
+  Crown,
   Mail,
+  MessageSquare,
+  Phone,
+  RefreshCw,
+  Search,
+  Tag,
+  UserPlus,
+  Users,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase-client'
-import { Card } from '@/components/ui/card'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
-import { Pagination } from '@/components/ui/pagination'
-import { Modal } from '@/components/ui/modal'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Card } from '@/components/ui/card'
+import { ChannelIcon } from '@/components/ui/channel-icon'
 import { EmptyState } from '@/components/ui/empty-state'
-import { timeAgo, cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
+import { Pagination } from '@/components/ui/pagination'
+import { Select } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { useUser } from '@/context/user-context'
-import type { ConversationStatus } from '@/types/database'
+import { createClient } from '@/lib/supabase-client'
+import { cn, timeAgo } from '@/lib/utils'
+import type { ChannelType, Contact } from '@/types/database'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface AccountOption {
-  id: string
-  name: string
+interface ContactRow extends Contact {
+  channels: ChannelType[]
 }
 
-interface ContactRecord {
-  name: string
-  email: string | null
-  accountId: string
-  accountName: string
-  totalConversations: number
-  lastMessageAt: string | null
-  firstMessageAt: string | null
-  topCategory: string | null
-  conversations: ContactConversation[]
-  emailCount: number
-  teamsCount: number
-  engagementScore: number
-  aiTags: string[]
-}
-
-interface ContactConversation {
-  id: string
-  subject: string | null
-  status: ConversationStatus
-  category: string | null
-  lastMessageAt: string | null
-  channel: string
-}
-
-type SortOption = 'last_active' | 'most_conversations' | 'name'
-
-const CATEGORIES = [
-  'Sales Inquiry',
-  'Trouble Ticket',
-  'Payment Issue',
-  'Service Problem',
-  'Technical Issue',
-  'Billing Question',
-  'Connection Issue',
-  'Rate Issue',
-  'General Inquiry',
-]
-
-const CATEGORY_OPTIONS = [
-  { value: '', label: 'All Categories' },
-  ...CATEGORIES.map((c) => ({ value: c, label: c })),
-]
-
-const SORT_OPTIONS = [
-  { value: 'last_active', label: 'Last Active' },
-  { value: 'most_conversations', label: 'Most Conversations' },
-  { value: 'name', label: 'Name' },
-]
-
-function getCategoryVariant(category: string | null): 'info' | 'warning' | 'success' | 'default' {
-  switch (category) {
-    case 'Technical Issue':
-    case 'Connection Issue':
-      return 'info'
-    case 'Payment Issue':
-    case 'Billing Question':
-    case 'Rate Issue':
-      return 'warning'
-    case 'Sales Inquiry':
-      return 'success'
-    default:
-      return 'default'
-  }
-}
-
-function getStatusVariant(status: ConversationStatus): 'info' | 'warning' | 'success' | 'danger' | 'default' {
-  switch (status) {
-    case 'active':
-    case 'in_progress':
-      return 'info'
-    case 'waiting_on_customer':
-      return 'warning'
-    case 'resolved':
-      return 'success'
-    case 'escalated':
-      return 'danger'
-    case 'archived':
-      return 'default'
-    default:
-      return 'default'
-  }
-}
+const PAGE_SIZE = 50
 
 function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+  return (
+    name
+      .split(/[\s@.]+/)
+      .filter(Boolean)
+      .map((p) => p[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || '?'
+  )
 }
-
-// ---------------------------------------------------------------------------
-// Page component
-// ---------------------------------------------------------------------------
 
 export default function ContactsPage() {
   const supabase = createClient()
   const { isAdmin, companyAccountIds } = useUser()
 
-  const [contacts, setContacts] = useState<ContactRecord[]>([])
+  const [contacts, setContacts] = useState<ContactRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // Pagination
-  const CONTACTS_PAGE_SIZE = 25
-  const [contactsPage, setContactsPage] = useState(1)
+  const [page, setPage] = useState(1)
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
-  const [accountFilter, setAccountFilter] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
-  const [sortBy, setSortBy] = useState<SortOption>('last_active')
-
-  // Accounts for filter
-  const [accounts, setAccounts] = useState<AccountOption[]>([])
-
-  // View History modal
-  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null)
-  const [historyModalOpen, setHistoryModalOpen] = useState(false)
+  const [vipOnly, setVipOnly] = useState(false)
+  const [tagFilter, setTagFilter] = useState('')
 
   // -------------------------------------------------------------------------
-  // Fetch accounts for filter/selector
-  // -------------------------------------------------------------------------
-  const fetchAccounts = useCallback(async () => {
-    let query = supabase
-      .from('accounts')
-      .select('id, name')
-      .eq('is_active', true)
-      .order('name')
-    if (!isAdmin && companyAccountIds.length > 0) {
-      query = query.in('id', companyAccountIds)
-    }
-    const { data } = await query
-    if (data) setAccounts(data)
-  }, [isAdmin, companyAccountIds])
-
-  // -------------------------------------------------------------------------
-  // Fetch contacts — aggregated from conversations + messages
+  // Fetch contacts joined with conversations to derive channels-used.
+  // For non-admins, restrict to contacts that have at least one conversation
+  // in one of their company's accounts.
   // -------------------------------------------------------------------------
   const fetchContacts = useCallback(async () => {
     setLoading(true)
     setError(null)
-
     try {
-      // 1) Fetch conversations with their participant info
-      let convQuery = supabase
-        .from('conversations')
-        .select(`
-          id,
-          account_id,
-          participant_name,
-          participant_email,
-          status,
-          channel,
-          first_message_at,
-          last_message_at,
-          account:accounts!inner(id, name)
-        `)
-        .not('participant_name', 'is', null)
-        .limit(10000)
+      // 1) Pull contacts (cap at a sane upper bound for client-side filter/page)
+      const { data: contactRows, error: contactErr } = await supabase
+        .from('contacts')
+        .select(
+          'id, email, phone, display_name, notes, tags, first_seen_at, last_seen_at, total_conversations, is_vip'
+        )
+        .order('last_seen_at', { ascending: false })
+        .limit(2000)
 
-      // Company scoping for non-admins (include sibling channel accounts)
-      if (!isAdmin && companyAccountIds.length > 0) {
-        convQuery = convQuery.in('account_id', companyAccountIds)
-      }
-
-      const { data: conversations, error: convError } = await convQuery
-
-      if (convError) {
-        setError(convError.message)
+      if (contactErr) {
+        setError(contactErr.message)
         setLoading(false)
         return
       }
 
-      // 2) Fetch classifications per conversation for category data
-      const convIds = (conversations || []).map((c: Record<string, unknown>) => c.id as string)
-      const classificationMap: Record<string, string> = {}
-
-      if (convIds.length > 0) {
-        // Fetch messages with their classifications for the relevant conversations
-        // Batch in chunks to avoid query size limits
-        const chunkSize = 50
-        for (let i = 0; i < convIds.length; i += chunkSize) {
-          const chunk = convIds.slice(i, i + chunkSize)
-          const { data: msgData } = await supabase
-            .from('messages')
-            .select('conversation_id, classification:message_classifications(category)')
-            .in('conversation_id', chunk)
-
-          if (msgData) {
-            const convCategoryCounts: Record<string, Record<string, number>> = {}
-            for (const msg of msgData) {
-              const convId = msg.conversation_id
-              const rawCl = msg.classification as unknown
-              const classifications: Array<{ category: string }> = Array.isArray(rawCl)
-                ? rawCl
-                : rawCl ? [rawCl as { category: string }] : []
-              if (classifications.length === 0) continue
-              for (const cl of classifications) {
-                if (!convCategoryCounts[convId]) convCategoryCounts[convId] = {}
-                convCategoryCounts[convId][cl.category] = (convCategoryCounts[convId][cl.category] || 0) + 1
-              }
-            }
-            for (const [convId, counts] of Object.entries(convCategoryCounts)) {
-              const topCat = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
-              if (topCat) classificationMap[convId] = topCat[0]
-            }
-          }
-        }
+      const contactList = (contactRows || []) as Contact[]
+      if (contactList.length === 0) {
+        setContacts([])
+        setLoading(false)
+        return
       }
 
-      // 3) Aggregate contacts by (name + email) key
-      const contactMap = new Map<string, ContactRecord>()
+      // 2) Fetch conversations restricted to either all (admin) or company
+      //    accounts (non-admin) so we can derive which channels each contact
+      //    has used + filter contacts that don't belong to this company.
+      const ids = contactList.map((c) => c.id)
+      let convQuery = supabase
+        .from('conversations')
+        .select('contact_id, channel, account_id')
+        .in('contact_id', ids)
+        .limit(10000)
+      if (!isAdmin && companyAccountIds.length > 0) {
+        convQuery = convQuery.in('account_id', companyAccountIds)
+      }
+      const { data: convRows } = await convQuery
 
-      for (const conv of (conversations || [])) {
-        const name = (conv.participant_name as string) || 'Unknown'
-        const email = conv.participant_email as string | null
-        // Supabase join may return object or array — handle both
-        const rawAcc = conv.account as unknown
-        const acc: { id: string; name: string } = Array.isArray(rawAcc)
-          ? (rawAcc[0] ?? { id: conv.account_id, name: 'Unknown' })
-          : (rawAcc as { id: string; name: string }) ?? { id: conv.account_id as string, name: 'Unknown' }
-        const key = `${name.toLowerCase()}||${(email || '').toLowerCase()}||${acc.id}`
-
-        if (!contactMap.has(key)) {
-          contactMap.set(key, {
-            name,
-            email,
-            accountId: acc.id,
-            accountName: acc.name.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim(),
-            totalConversations: 0,
-            lastMessageAt: null,
-            firstMessageAt: null,
-            topCategory: null,
-            conversations: [],
-            emailCount: 0,
-            teamsCount: 0,
-            engagementScore: 0,
-            aiTags: [],
-          })
-        }
-
-        const contact = contactMap.get(key)!
-        contact.totalConversations += 1
-
-        // Track earliest / latest
-        const lastMsg = conv.last_message_at as string | null
-        const firstMsg = conv.first_message_at as string | null
-
-        if (lastMsg && (!contact.lastMessageAt || lastMsg > contact.lastMessageAt)) {
-          contact.lastMessageAt = lastMsg
-        }
-        if (firstMsg && (!contact.firstMessageAt || firstMsg < contact.firstMessageAt)) {
-          contact.firstMessageAt = firstMsg
-        }
-
-        // Email subject from first message or use participant name
-        const subject = email
-          ? `Conversation via ${conv.channel}`
-          : `${conv.channel} conversation`
-
-        // Track channel counts
-        const ch = conv.channel as string
-        if (ch === 'email') contact.emailCount++
-        else if (ch === 'teams') contact.teamsCount++
-
-        contact.conversations.push({
-          id: conv.id as string,
-          subject,
-          status: conv.status as ConversationStatus,
-          category: classificationMap[conv.id as string] || null,
-          lastMessageAt: lastMsg,
-          channel: ch,
-        })
+      const channelsByContact = new Map<string, Set<ChannelType>>()
+      for (const row of convRows || []) {
+        const cid = row.contact_id as string | null
+        if (!cid) continue
+        const ch = row.channel as ChannelType
+        if (!channelsByContact.has(cid)) channelsByContact.set(cid, new Set())
+        channelsByContact.get(cid)!.add(ch)
       }
 
-      // 4) Calculate top category per contact (must run BEFORE AI tags so Sales/Support tags work)
-      for (const contact of contactMap.values()) {
-        const catCounts: Record<string, number> = {}
-        for (const conv of contact.conversations) {
-          if (conv.category) {
-            catCounts[conv.category] = (catCounts[conv.category] || 0) + 1
-          }
-        }
-        const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]
-        contact.topCategory = topCat ? topCat[0] : null
+      const enriched: ContactRow[] = contactList
+        .map((c) => ({
+          ...c,
+          channels: Array.from(channelsByContact.get(c.id) || []),
+        }))
+        // Non-admins: hide contacts with zero conversations in their company.
+        .filter((c) => isAdmin || c.channels.length > 0)
 
-        // Sort conversations by date descending
-        contact.conversations.sort((a, b) => {
-          if (!a.lastMessageAt) return 1
-          if (!b.lastMessageAt) return -1
-          return b.lastMessageAt.localeCompare(a.lastMessageAt)
-        })
-      }
-
-      // 5) Compute engagement scores + AI auto-tags (after topCategory is set)
-      for (const contact of contactMap.values()) {
-        const recencyDays = contact.lastMessageAt
-          ? Math.max(0, (Date.now() - new Date(contact.lastMessageAt).getTime()) / (1000 * 60 * 60 * 24))
-          : 30
-        const recencyWeight = Math.max(0.1, 1 - recencyDays / 30)
-        contact.engagementScore = Math.round(contact.totalConversations * recencyWeight * 10)
-
-        // AI Auto-Tags
-        const tags: string[] = []
-        if (contact.engagementScore >= 50 && contact.totalConversations >= 3) tags.push('VIP')
-        if (contact.firstMessageAt && recencyDays <= 7 && contact.totalConversations <= 2) tags.push('New Lead')
-        if (recencyDays >= 30 && contact.totalConversations >= 2) tags.push('Churning')
-        const hasEscalated = contact.conversations.some(c => c.status === 'escalated')
-        if (hasEscalated) tags.push('At Risk')
-        if (contact.topCategory === 'Sales Inquiry') tags.push('Sales')
-        if (contact.topCategory === 'Trouble Ticket' || contact.topCategory === 'Technical Issue') tags.push('Support')
-        contact.aiTags = tags
-      }
-
-      setContacts(Array.from(contactMap.values()))
+      setContacts(enriched)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load contacts')
     } finally {
       setLoading(false)
     }
-  }, [isAdmin, companyAccountIds])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, companyAccountIds.join(',')])
 
   useEffect(() => {
     fetchContacts()
-    fetchAccounts()
-  }, [fetchContacts, fetchAccounts])
+  }, [fetchContacts])
 
   // -------------------------------------------------------------------------
-  // Derived stats
+  // Derived
   // -------------------------------------------------------------------------
-  const totalContacts = contacts.length
-
-  const newThisWeek = useMemo(() => {
-    const oneWeekAgo = new Date()
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
-    const cutoff = oneWeekAgo.toISOString()
-    return contacts.filter((c) => c.firstMessageAt && c.firstMessageAt >= cutoff).length
-  }, [contacts])
-
-  const mostActiveContact = useMemo(() => {
-    if (contacts.length === 0) return 'N/A'
-    const sorted = [...contacts].sort((a, b) => b.totalConversations - a.totalConversations)
-    return sorted[0].name
-  }, [contacts])
-
-  const topCategory = useMemo(() => {
-    const catCounts: Record<string, number> = {}
+  const allTags = useMemo(() => {
+    const seen = new Set<string>()
     for (const c of contacts) {
-      if (c.topCategory) {
-        catCounts[c.topCategory] = (catCounts[c.topCategory] || 0) + c.totalConversations
-      }
+      for (const t of c.tags || []) seen.add(t)
     }
-    const top = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]
-    return top ? top[0] : 'N/A'
+    return Array.from(seen).sort()
+  }, [contacts])
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return contacts.filter((c) => {
+      if (vipOnly && !c.is_vip) return false
+      if (tagFilter && !(c.tags || []).includes(tagFilter)) return false
+      if (q) {
+        const hay = [c.display_name, c.email, c.phone]
+          .filter(Boolean)
+          .map((s) => (s as string).toLowerCase())
+          .join(' ')
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+  }, [contacts, searchQuery, vipOnly, tagFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE
+    return filtered.slice(start, start + PAGE_SIZE)
+  }, [filtered, page])
+
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery, vipOnly, tagFilter])
+
+  const stats = useMemo(() => {
+    const vipCount = contacts.filter((c) => c.is_vip).length
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+    const newThisWeek = contacts.filter(
+      (c) => c.first_seen_at && new Date(c.first_seen_at).getTime() >= oneWeekAgo
+    ).length
+    const totalConversations = contacts.reduce(
+      (acc, c) => acc + (c.total_conversations || 0),
+      0
+    )
+    return {
+      total: contacts.length,
+      vipCount,
+      newThisWeek,
+      totalConversations,
+    }
   }, [contacts])
 
   // -------------------------------------------------------------------------
-  // Filtered + sorted contacts
-  // -------------------------------------------------------------------------
-  const filteredContacts = useMemo(() => {
-    let result = contacts.filter((contact) => {
-      const matchesSearch =
-        !searchQuery ||
-        contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (contact.email && contact.email.toLowerCase().includes(searchQuery.toLowerCase()))
-      const matchesAccount = !accountFilter || contact.accountId === accountFilter
-      const matchesCategory = !categoryFilter || contact.topCategory === categoryFilter
-      return matchesSearch && matchesAccount && matchesCategory
-    })
-
-    // Sort
-    switch (sortBy) {
-      case 'last_active':
-        result.sort((a, b) => {
-          if (!a.lastMessageAt) return 1
-          if (!b.lastMessageAt) return -1
-          return b.lastMessageAt.localeCompare(a.lastMessageAt)
-        })
-        break
-      case 'most_conversations':
-        result.sort((a, b) => b.totalConversations - a.totalConversations)
-        break
-      case 'name':
-        result.sort((a, b) => a.name.localeCompare(b.name))
-        break
-    }
-
-    return result
-  }, [contacts, searchQuery, accountFilter, categoryFilter, sortBy])
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setContactsPage(1)
-  }, [searchQuery, accountFilter, categoryFilter, sortBy])
-
-  const totalContactPages = Math.ceil(filteredContacts.length / CONTACTS_PAGE_SIZE)
-  const paginatedContacts = useMemo(() => {
-    const start = (contactsPage - 1) * CONTACTS_PAGE_SIZE
-    return filteredContacts.slice(start, start + CONTACTS_PAGE_SIZE)
-  }, [filteredContacts, contactsPage, CONTACTS_PAGE_SIZE])
-
-  // -------------------------------------------------------------------------
-  // Handlers
-  // -------------------------------------------------------------------------
-  function handleViewHistory(contact: ContactRecord) {
-    setSelectedContact(contact)
-    setHistoryModalOpen(true)
-  }
-
-  function handleCloseHistory() {
-    setHistoryModalOpen(false)
-    setSelectedContact(null)
-  }
-
-  // -------------------------------------------------------------------------
-  // Render: Loading
+  // Render — loading
   // -------------------------------------------------------------------------
   if (loading) {
     return (
-      <div className="flex h-80 items-center justify-center animate-fade-in">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-28" />
+            <Skeleton className="h-4 w-72" />
           </div>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-700">Loading contacts</p>
-            <p className="text-xs text-gray-400 mt-1">Aggregating customer data...</p>
-          </div>
+          <Skeleton className="h-9 w-24 rounded-lg" />
         </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-2xl" />
+          ))}
+        </div>
+        <Skeleton className="h-96 rounded-2xl" />
       </div>
     )
   }
 
   // -------------------------------------------------------------------------
-  // Render: Error
+  // Render — error
   // -------------------------------------------------------------------------
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-24 animate-fade-in">
-        <div className="h-12 w-12 rounded-xl bg-red-100 flex items-center justify-center mb-4">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-red-100">
           <AlertTriangle className="h-6 w-6 text-red-600" />
         </div>
-        <p className="text-red-700 font-medium">Failed to load contacts</p>
-        <p className="text-sm text-gray-500 mt-1">{error}</p>
+        <p className="font-medium text-red-700">Failed to load contacts</p>
+        <p className="mt-1 text-sm text-gray-500">{error}</p>
         <Button variant="secondary" className="mt-4" onClick={() => fetchContacts()}>
           <RefreshCw className="h-4 w-4" />
-          Try Again
+          Try again
         </Button>
       </div>
     )
   }
 
   // -------------------------------------------------------------------------
-  // Render: Page
+  // Render — page
   // -------------------------------------------------------------------------
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Page header */}
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Customer contact history aggregated from all conversations
+            Unified customer profiles across every channel and account.
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => fetchContacts()}>
@@ -512,338 +260,245 @@ export default function ContactsPage() {
         </Button>
       </div>
 
-      {/* Stats row */}
+      {/* KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="!py-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-              <Users className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Total Contacts</p>
-              <p className="text-2xl font-bold text-gray-900">{totalContacts}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="!py-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-700">
-              <UserPlus className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">New This Week</p>
-              <p className="text-2xl font-bold text-gray-900">{newThisWeek}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="!py-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 text-purple-700">
-              <Crown className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Most Active</p>
-              <p className="text-lg font-bold text-gray-900 truncate max-w-[160px]" title={mostActiveContact}>
-                {mostActiveContact}
-              </p>
-            </div>
-          </div>
-        </Card>
-        <Card className="!py-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
-              <Tag className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Top Category</p>
-              <p className="text-lg font-bold text-gray-900 truncate max-w-[160px]" title={topCategory}>
-                {topCategory}
-              </p>
-            </div>
-          </div>
-        </Card>
+        <KpiTile color="blue" icon={Users} label="Total Contacts" value={stats.total} />
+        <KpiTile
+          color="green"
+          icon={UserPlus}
+          label="New This Week"
+          value={stats.newThisWeek}
+        />
+        <KpiTile color="amber" icon={Crown} label="VIPs" value={stats.vipCount} />
+        <KpiTile
+          color="purple"
+          icon={MessageSquare}
+          label="Conversations"
+          value={stats.totalConversations}
+        />
       </div>
 
       {/* Filter bar */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="flex-1">
           <Input
-            placeholder="Search by name or email..."
+            placeholder="Search by name, email, or phone..."
             icon={<Search className="h-4 w-4" />}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        {isAdmin && (
-          <div className="w-full sm:w-48">
-            <select
-              value={accountFilter}
-              onChange={(e) => setAccountFilter(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-            >
-              <option value="">All Companies</option>
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
         <div className="w-full sm:w-48">
           <Select
-            options={CATEGORY_OPTIONS}
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            options={[
+              { value: '', label: 'All tags' },
+              ...allTags.map((t) => ({ value: t, label: t })),
+            ]}
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
           />
         </div>
-        <div className="w-full sm:w-48">
-          <Select
-            options={SORT_OPTIONS}
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortOption)}
-          />
-        </div>
+        <button
+          type="button"
+          onClick={() => setVipOnly((v) => !v)}
+          className={cn(
+            'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            vipOnly
+              ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-200'
+              : 'bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-200'
+          )}
+        >
+          <Crown className="h-4 w-4" />
+          VIP only
+        </button>
       </div>
 
-      {/* Contacts table */}
-      <Card>
-        {filteredContacts.length === 0 ? (
+      {/* Table */}
+      <Card className="!p-0 overflow-hidden">
+        {filtered.length === 0 ? (
           <EmptyState
-            icon={<Users className="h-12 w-12" />}
-            title="No contacts found"
+            icon={Users}
+            title={contacts.length === 0 ? 'No contacts yet' : 'No matching contacts'}
             description={
               contacts.length === 0
-                ? 'No customer conversations have been recorded yet. Contacts will appear here as customers message your accounts.'
-                : 'Try adjusting your search or filter criteria.'
+                ? 'Contacts will appear here automatically as customers reach out across email, Teams, or WhatsApp.'
+                : 'Try clearing your search or filter criteria.'
             }
           />
         ) : (
-          <><Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Contact</TableHead>
-                <TableHead>Company</TableHead>
-                <TableHead>Channels</TableHead>
-                <TableHead>Conversations</TableHead>
-                <TableHead className="hidden md:table-cell">Engagement</TableHead>
-                <TableHead className="hidden lg:table-cell">AI Tags</TableHead>
-                <TableHead className="hidden md:table-cell">Last Contact</TableHead>
-                <TableHead className="hidden lg:table-cell">Top Category</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedContacts.map((contact, idx) => {
-                const key = `${contact.name}-${contact.email || ''}-${contact.accountId}-${idx}`
-                return (
-                  <TableRow
-                    key={key}
-                    className="cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => handleViewHistory(contact)}
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100 text-xs font-semibold text-teal-700">
-                          {getInitials(contact.name)}
-                        </div>
-                        <span className="font-medium text-gray-900">{contact.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <Badge variant="info" size="sm">{contact.accountName}</Badge>
-                        {contact.email && (
-                          <span className="text-xs text-gray-400 hidden xl:inline truncate max-w-[120px]">{contact.email}</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {contact.emailCount > 0 && (
-                          <span className="flex items-center gap-0.5 rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600">
-                            <Mail className="h-2.5 w-2.5" /> {contact.emailCount}
-                          </span>
-                        )}
-                        {contact.teamsCount > 0 && (
-                          <span className="flex items-center gap-0.5 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-600">
-                            <MessageSquare className="h-2.5 w-2.5" /> {contact.teamsCount}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-semibold text-gray-900">{contact.totalConversations}</span>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <div className="flex items-center gap-1.5">
-                        <div className="h-2 w-16 rounded-full bg-gray-100 overflow-hidden">
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Contact</TableHead>
+                  <TableHead className="hidden sm:table-cell">Identifier</TableHead>
+                  <TableHead className="hidden md:table-cell">Channels</TableHead>
+                  <TableHead className="hidden lg:table-cell">Tags</TableHead>
+                  <TableHead className="text-right">Conversations</TableHead>
+                  <TableHead className="hidden md:table-cell whitespace-nowrap">
+                    Last Seen
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginated.map((c) => {
+                  const name = c.display_name?.trim() || c.email || c.phone || 'Unknown'
+                  return (
+                    <TableRow key={c.id} className="hover:bg-gray-50 transition-colors">
+                      <TableCell>
+                        <Link
+                          href={`/contacts/${c.id}`}
+                          className="flex items-center gap-3 group"
+                        >
                           <div
-                            className={`h-full rounded-full transition-all ${
-                              contact.engagementScore >= 50 ? 'bg-green-500' : contact.engagementScore >= 20 ? 'bg-amber-500' : 'bg-gray-300'
-                            }`}
-                            style={{ width: `${Math.min(contact.engagementScore, 100)}%` }}
-                          />
+                            className={cn(
+                              'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold ring-1',
+                              c.is_vip
+                                ? 'bg-amber-100 text-amber-800 ring-amber-200'
+                                : 'bg-teal-100 text-teal-700 ring-teal-200'
+                            )}
+                          >
+                            {getInitials(name)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-gray-900 group-hover:text-teal-700 transition-colors truncate">
+                                {name}
+                              </span>
+                              {c.is_vip && (
+                                <Crown className="h-3 w-3 flex-shrink-0 text-amber-600" />
+                              )}
+                            </div>
+                          </div>
+                        </Link>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <div className="space-y-0.5">
+                          {c.email && (
+                            <div className="flex items-center gap-1 text-xs text-gray-600 truncate">
+                              <Mail className="h-3 w-3 text-gray-400" />
+                              <span className="truncate">{c.email}</span>
+                            </div>
+                          )}
+                          {c.phone && (
+                            <div className="flex items-center gap-1 text-xs text-gray-600">
+                              <Phone className="h-3 w-3 text-gray-400" />
+                              {c.phone}
+                            </div>
+                          )}
+                          {!c.email && !c.phone && (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
                         </div>
-                        <span className="text-xs text-gray-500">{contact.engagementScore}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <div className="flex flex-wrap gap-1">
-                        {contact.aiTags.map((tag, ti) => (
-                          <span key={ti} className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                            tag === 'VIP' ? 'bg-amber-100 text-amber-700' :
-                            tag === 'At Risk' ? 'bg-red-100 text-red-700' :
-                            tag === 'New Lead' ? 'bg-green-100 text-green-700' :
-                            tag === 'Churning' ? 'bg-orange-100 text-orange-700' :
-                            tag === 'Sales' ? 'bg-blue-100 text-blue-700' :
-                            tag === 'Support' ? 'bg-purple-100 text-purple-700' :
-                            'bg-gray-100 text-gray-600'
-                          )}>
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden whitespace-nowrap md:table-cell">
-                      <span className="text-sm text-gray-500">
-                        {contact.lastMessageAt ? timeAgo(contact.lastMessageAt) + ' ago' : 'N/A'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      {contact.topCategory ? (
-                        <Badge variant={getCategoryVariant(contact.topCategory)} size="sm">
-                          {contact.topCategory}
-                        </Badge>
-                      ) : (
-                        <span className="text-sm text-gray-400">--</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleViewHistory(contact) }}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        View History
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-          <Pagination
-            currentPage={contactsPage}
-            totalPages={totalContactPages}
-            totalItems={filteredContacts.length}
-            pageSize={CONTACTS_PAGE_SIZE}
-            onPageChange={setContactsPage}
-          />
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {c.channels.length === 0 ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            {c.channels.map((ch) => (
+                              <span
+                                key={ch}
+                                title={ch}
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-50 ring-1 ring-gray-200"
+                              >
+                                <ChannelIcon channel={ch} size={12} />
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        {c.tags && c.tags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {c.tags.slice(0, 3).map((t) => (
+                              <Badge key={t} variant="info" size="sm">
+                                <Tag className="mr-0.5 h-2.5 w-2.5" /> {t}
+                              </Badge>
+                            ))}
+                            {c.tags.length > 3 && (
+                              <span className="text-[10px] text-gray-400">
+                                +{c.tags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-semibold tabular-nums text-gray-900">
+                          {c.total_conversations}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden whitespace-nowrap md:table-cell">
+                        <span className="text-sm text-gray-500" suppressHydrationWarning>
+                          {c.last_seen_at ? `${timeAgo(c.last_seen_at)} ago` : '—'}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+            <div className="border-t border-gray-100 px-4">
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                totalItems={filtered.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+              />
+            </div>
           </>
         )}
       </Card>
-
-      {/* View History Modal */}
-      <Modal
-        open={historyModalOpen}
-        onClose={handleCloseHistory}
-        title={selectedContact ? `${selectedContact.name} — Contact History` : 'Contact History'}
-        className="sm:max-w-2xl"
-        footer={
-          <Button variant="secondary" onClick={handleCloseHistory}>
-            Close
-          </Button>
-        }
-      >
-        {selectedContact && (
-          <div className="space-y-5">
-            {/* Contact info header */}
-            <div className="rounded-lg bg-gray-50 p-4">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-100 text-sm font-bold text-teal-700">
-                  {getInitials(selectedContact.name)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-base font-semibold text-gray-900">{selectedContact.name}</h3>
-                  {selectedContact.email && (
-                    <p className="flex items-center gap-1 text-sm text-gray-500">
-                      <Mail className="h-3.5 w-3.5" />
-                      {selectedContact.email}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div>
-                  <p className="text-xs text-gray-500">Company</p>
-                  <p className="text-sm font-medium text-gray-700">{selectedContact.accountName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Conversations</p>
-                  <p className="text-sm font-medium text-gray-700">{selectedContact.totalConversations}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">First Seen</p>
-                  <p className="text-sm font-medium text-gray-700">
-                    {selectedContact.firstMessageAt
-                      ? timeAgo(selectedContact.firstMessageAt) + ' ago'
-                      : 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Last Seen</p>
-                  <p className="text-sm font-medium text-gray-700">
-                    {selectedContact.lastMessageAt
-                      ? timeAgo(selectedContact.lastMessageAt) + ' ago'
-                      : 'N/A'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Conversation list */}
-            <div>
-              <h4 className="mb-3 text-sm font-semibold text-gray-700">All Conversations</h4>
-              {selectedContact.conversations.length === 0 ? (
-                <p className="text-sm text-gray-400">No conversations recorded.</p>
-              ) : (
-                <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {selectedContact.conversations.map((conv) => (
-                    <Link
-                      key={conv.id}
-                      href={`/conversations/${conv.id}`}
-                      className="flex items-center justify-between rounded-lg border border-gray-100 p-3 hover:bg-gray-50 transition-colors group"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 group-hover:text-teal-700 transition-colors truncate">
-                          {conv.subject || 'Untitled Conversation'}
-                        </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <Badge variant={getStatusVariant(conv.status)} size="sm">
-                            {conv.status.replace(/_/g, ' ')}
-                          </Badge>
-                          {conv.category && (
-                            <Badge variant={getCategoryVariant(conv.category)} size="sm">
-                              {conv.category}
-                            </Badge>
-                          )}
-                          <span className="text-xs text-gray-400 capitalize">{conv.channel}</span>
-                        </div>
-                      </div>
-                      <div className="ml-3 flex-shrink-0 text-right">
-                        <p className="text-xs text-gray-400">
-                          {conv.lastMessageAt ? timeAgo(conv.lastMessageAt) + ' ago' : 'N/A'}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Local KPI tile — kept simple to match the existing aesthetic without
+// stomping on the shared `KPICard` component.
+// ---------------------------------------------------------------------------
+function KpiTile({
+  color,
+  icon: Icon,
+  label,
+  value,
+}: {
+  color: 'blue' | 'green' | 'amber' | 'purple'
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: number | string
+}) {
+  const palette: Record<typeof color, { chip: string; ring: string }> = {
+    blue: { chip: 'bg-blue-50 text-blue-700', ring: 'ring-blue-200' },
+    green: { chip: 'bg-emerald-50 text-emerald-700', ring: 'ring-emerald-200' },
+    amber: { chip: 'bg-amber-50 text-amber-700', ring: 'ring-amber-200' },
+    purple: { chip: 'bg-violet-50 text-violet-700', ring: 'ring-violet-200' },
+  }
+  const p = palette[color]
+  return (
+    <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+      <div className="flex items-center gap-3">
+        <div
+          className={cn(
+            'flex h-10 w-10 items-center justify-center rounded-xl ring-1',
+            p.chip,
+            p.ring
+          )}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            {label}
+          </p>
+          <p className="mt-0.5 text-2xl font-semibold tabular-nums text-gray-900">{value}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+

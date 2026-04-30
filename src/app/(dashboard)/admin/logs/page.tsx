@@ -153,7 +153,6 @@ export default function LogsPage() {
               { value: 'ai', label: 'AI' },
               { value: 'auth', label: 'Auth' },
               { value: 'system', label: 'System' },
-              { value: 'n8n', label: 'n8n' },
               { value: 'notification', label: 'Notification' },
               { value: 'export', label: 'Export' },
             ]}

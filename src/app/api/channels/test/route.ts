@@ -1,0 +1,64 @@
+import { NextResponse } from 'next/server'
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase-server'
+import { verifyEmailConfig, verifyTeamsConfig, verifyWhatsAppConfig } from '@/lib/channel-sender'
+import { checkRateLimit } from '@/lib/api-helpers'
+import {
+  getChannelConfig,
+  type Channel,
+  type EmailConfig,
+  type TeamsConfig,
+  type WhatsAppConfig,
+} from '@/lib/channel-config'
+
+type TestBody =
+  | { channel: 'email'; config?: EmailConfig; account_id?: string }
+  | { channel: 'teams'; config?: TeamsConfig; account_id?: string }
+  | { channel: 'whatsapp'; config?: WhatsAppConfig; account_id?: string }
+
+// POST /api/channels/test
+//   If `config` is provided, tests those credentials without saving.
+//   Otherwise falls back to saved/env creds for account_id.
+export async function POST(request: Request) {
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin = await createServiceRoleClient()
+  const { data: profile } = await admin.from('users').select('role').eq('id', user.id).maybeSingle()
+  if (profile?.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+
+  // Test calls hit real SMTP/Graph/WhatsApp endpoints — keep them tight.
+  if (!(await checkRateLimit(`test-connection:${user.id}`, 10, 60))) {
+    return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+  }
+
+  try {
+    const body = (await request.json()) as Partial<TestBody> & { channel?: Channel }
+    const { channel, account_id } = body
+    if (!channel || !['email', 'teams', 'whatsapp'].includes(channel)) {
+      return NextResponse.json({ error: 'channel must be email|teams|whatsapp' }, { status: 400 })
+    }
+
+    switch (channel) {
+      case 'email': {
+        const cfg = body.config ?? (await getChannelConfig(account_id ?? null, 'email'))
+        if (!cfg) return NextResponse.json({ ok: false, error: 'No credentials configured' })
+        return NextResponse.json(await verifyEmailConfig(cfg as EmailConfig))
+      }
+      case 'teams': {
+        const cfg = body.config ?? (await getChannelConfig(account_id ?? null, 'teams'))
+        if (!cfg) return NextResponse.json({ ok: false, error: 'No credentials configured' })
+        return NextResponse.json(await verifyTeamsConfig(cfg as TeamsConfig))
+      }
+      case 'whatsapp': {
+        const cfg = body.config ?? (await getChannelConfig(account_id ?? null, 'whatsapp'))
+        if (!cfg) return NextResponse.json({ ok: false, error: 'No credentials configured' })
+        return NextResponse.json(await verifyWhatsAppConfig(cfg as WhatsAppConfig))
+      }
+    }
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : 'Test failed' },
+      { status: 500 }
+    )
+  }
+}

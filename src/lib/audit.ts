@@ -14,6 +14,9 @@ type AuditAction =
   | 'message_archived'
   | 'kb_article_deleted'
   | 'notification_rule_changed'
+  | 'contact_updated'
+  | 'contact_deleted'
+  | 'ai_budget.threshold_crossed'
 
 /**
  * Writes an entry to the audit_log table.

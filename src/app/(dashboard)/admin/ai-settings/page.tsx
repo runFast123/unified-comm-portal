@@ -133,10 +133,7 @@ export default function AISettingsPage() {
         return
       }
 
-      const mapped: Account[] = (data ?? []).map((row: Record<string, unknown>) => ({
-        ...row,
-        n8n_workflow_id: row.make_scenario_id ?? null,
-      })) as Account[]
+      const mapped: Account[] = (data ?? []) as Account[]
 
       setAccounts(mapped)
 

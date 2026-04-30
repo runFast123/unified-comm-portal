@@ -17,9 +17,13 @@ import {
   Meh,
   Loader2,
   MessageCircle,
-  Users,
   ArrowRight,
   X,
+  Activity,
+  Building2,
+  BarChart3,
+  AlertCircle,
+  Lightbulb,
 } from 'lucide-react'
 
 // Message type with conversation link support
@@ -46,19 +50,19 @@ function SentimentTableModal({ title, messages, onClose, initialFilter }: {
   const negCount = messages.filter(m => m.sentiment === 'negative').length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-[650px] max-w-[95vw] max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
-          <h3 className="text-sm font-bold text-gray-800">{title}</h3>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 transition-colors">
-            <X className="h-4 w-4" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200/80 w-[650px] max-w-[95vw] max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gradient-to-b from-gray-50/50 to-transparent">
+          <h3 className="text-[15px] font-semibold tracking-tight text-gray-900">{title}</h3>
+          <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+            <X className="h-4 w-4" strokeWidth={2} />
           </button>
         </div>
         {/* Sentiment filter tabs */}
-        <div className="flex items-center gap-1 px-5 py-2 border-b border-gray-100 bg-white">
+        <div className="flex items-center gap-1.5 px-5 py-2.5 border-b border-gray-100 bg-white">
           {([
-            { key: 'all' as const, label: 'All', count: messages.length, color: 'bg-gray-600' },
-            { key: 'positive' as const, label: 'Positive', count: posCount, color: 'bg-green-500' },
+            { key: 'all' as const, label: 'All', count: messages.length, color: 'bg-gray-500' },
+            { key: 'positive' as const, label: 'Positive', count: posCount, color: 'bg-emerald-500' },
             { key: 'neutral' as const, label: 'Neutral', count: neuCount, color: 'bg-gray-400' },
             { key: 'negative' as const, label: 'Negative', count: negCount, color: 'bg-red-500' },
           ]).map(tab => (
@@ -66,24 +70,24 @@ function SentimentTableModal({ title, messages, onClose, initialFilter }: {
               key={tab.key}
               onClick={() => setFilter(tab.key)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium tabular-nums transition-colors ring-1',
                 filter === tab.key
-                  ? 'bg-gray-800 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-gray-900 text-white ring-gray-900'
+                  : 'bg-white text-gray-600 ring-gray-200 hover:bg-gray-50'
               )}
             >
-              <span className={cn('h-2 w-2 rounded-full', filter === tab.key ? 'bg-white' : tab.color)} />
+              <span className={cn('h-1.5 w-1.5 rounded-full', filter === tab.key ? 'bg-white' : tab.color)} />
               {tab.label} ({tab.count})
             </button>
           ))}
         </div>
         <div className="overflow-y-auto max-h-[55vh]">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 sticky top-0">
+            <thead className="bg-gray-50/50 sticky top-0">
               <tr>
-                <th className="text-left px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase w-24">Sentiment</th>
-                <th className="text-left px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase">Sender</th>
-                <th className="text-left px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase">Message</th>
+                <th className="text-left px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 w-24">Sentiment</th>
+                <th className="text-left px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Sender</th>
+                <th className="text-left px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Message</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -97,18 +101,18 @@ function SentimentTableModal({ title, messages, onClose, initialFilter }: {
                   className={cn(
                     'transition-colors',
                     m.conversationId ? 'cursor-pointer' : '',
-                    m.sentiment === 'positive' ? 'hover:bg-green-50' : m.sentiment === 'negative' ? 'hover:bg-red-50' : 'hover:bg-gray-50'
+                    m.sentiment === 'positive' ? 'hover:bg-emerald-50/50' : m.sentiment === 'negative' ? 'hover:bg-red-50/50' : 'hover:bg-gray-50/60'
                   )}
                 >
                   <td className="px-5 py-3">
                     <span className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-                      m.sentiment === 'positive' ? 'bg-green-100 text-green-700' :
-                      m.sentiment === 'negative' ? 'bg-red-100 text-red-700' :
-                      'bg-gray-100 text-gray-600'
+                      'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1',
+                      m.sentiment === 'positive' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' :
+                      m.sentiment === 'negative' ? 'bg-red-50 text-red-700 ring-red-200' :
+                      'bg-gray-50 text-gray-700 ring-gray-200'
                     )}>
-                      <span className={cn('h-2 w-2 rounded-full',
-                        m.sentiment === 'positive' ? 'bg-green-500' : m.sentiment === 'negative' ? 'bg-red-500' : 'bg-gray-400'
+                      <span className={cn('h-1.5 w-1.5 rounded-full',
+                        m.sentiment === 'positive' ? 'bg-emerald-500' : m.sentiment === 'negative' ? 'bg-red-500' : 'bg-gray-400'
                       )} />
                       {m.sentiment === 'positive' ? 'Pos' : m.sentiment === 'negative' ? 'Neg' : 'Neu'}
                     </span>
@@ -125,12 +129,12 @@ function SentimentTableModal({ title, messages, onClose, initialFilter }: {
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
-          <span>{filtered.length} of {messages.length} messages</span>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> {posCount}</span>
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-gray-400" /> {neuCount}</span>
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" /> {negCount}</span>
+        <div className="flex items-center justify-between px-5 py-2.5 border-t border-gray-100 bg-gray-50/50 text-xs text-gray-500">
+          <span className="tabular-nums">{filtered.length} of {messages.length} messages</span>
+          <div className="flex items-center gap-3 tabular-nums">
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {posCount}</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-gray-400" /> {neuCount}</span>
+            <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-500" /> {negCount}</span>
           </div>
         </div>
       </div>
@@ -180,19 +184,36 @@ interface CategorySentiment {
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
+/** Maps callers' solid `bg-<color>-500` (icon color) and `bg-<color>-50 border-<color>-100`
+ *  (card surface) props to the new soft chip palette while preserving the API. */
+const SENTIMENT_CHIP: Record<string, { bg: string; text: string; ring: string }> = {
+  'bg-green-500':   { bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200' },
+  'bg-emerald-500': { bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200' },
+  'bg-red-500':     { bg: 'bg-red-50',     text: 'text-red-700',     ring: 'ring-red-200' },
+  'bg-gray-500':    { bg: 'bg-gray-100',   text: 'text-gray-700',    ring: 'ring-gray-200' },
+  'bg-amber-500':   { bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'ring-amber-200' },
+  'bg-blue-500':    { bg: 'bg-blue-50',    text: 'text-blue-700',    ring: 'ring-blue-200' },
+  'bg-teal-500':    { bg: 'bg-teal-50',    text: 'text-teal-700',    ring: 'ring-teal-200' },
+}
+
 function SentimentStatCard({ label, value, subtitle, icon: Icon, color, bgColor }: {
   label: string; value: string | number; subtitle?: string; icon: React.ElementType; color: string; bgColor: string
 }) {
+  const chip = SENTIMENT_CHIP[color] || SENTIMENT_CHIP['bg-teal-500']
+  // bgColor may be 'border-gray-200 bg-white' or 'border-green-100 bg-green-50' — pass through
   return (
-    <div className={cn('rounded-xl border p-4 shadow-sm', bgColor)}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-gray-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
-          {subtitle && <p className="mt-0.5 text-xs text-gray-400">{subtitle}</p>}
+    <div className={cn(
+      'rounded-2xl border p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]',
+      bgColor
+    )}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{label}</p>
+          <p className="mt-2 text-2xl font-semibold leading-tight tabular-nums tracking-tight text-gray-900">{value}</p>
+          {subtitle && <p className="mt-1 text-[11px] text-gray-500">{subtitle}</p>}
         </div>
-        <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', color)}>
-          <Icon className="h-4 w-4 text-white" />
+        <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1', chip.bg, chip.text, chip.ring)}>
+          <Icon className="h-4.5 w-4.5" strokeWidth={2} />
         </div>
       </div>
     </div>
@@ -206,12 +227,12 @@ function SentimentScoreBar({ score }: { score: number }) {
   const position = Math.max(0, Math.min(100, (score + 100) / 2))
   return (
     <div className="relative">
-      <div className="h-3 rounded-full bg-gradient-to-r from-red-400 via-gray-300 to-green-400 overflow-hidden" />
+      <div className="h-2 rounded-full bg-gradient-to-r from-red-400 via-gray-200 to-emerald-400 overflow-hidden" />
       <div
-        className="absolute top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-2 border-gray-800 shadow-md transition-all"
-        style={{ left: `calc(${position}% - 10px)` }}
+        className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-white ring-2 ring-gray-900 shadow-[0_2px_4px_rgba(16,24,40,0.12)] transition-all"
+        style={{ left: `calc(${position}% - 8px)` }}
       />
-      <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+      <div className="flex justify-between text-[10px] font-semibold uppercase tracking-wider text-gray-500 mt-2">
         <span>Negative</span>
         <span>Neutral</span>
         <span>Positive</span>
@@ -471,7 +492,7 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
   return (
     <div className="space-y-6">
       {/* Channel Filter Tabs */}
-      <div className="flex items-center gap-2 rounded-lg bg-gray-100 p-1">
+      <div className="flex items-center gap-0.5 rounded-lg border border-gray-200/80 bg-gray-50 p-1 shadow-[0_1px_2px_rgba(16,24,40,0.04)] w-fit">
         {[
           { value: 'all' as const, label: 'All Channels' },
           { value: 'email' as const, label: 'Email' },
@@ -482,8 +503,10 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
             key={tab.value}
             onClick={() => setChannelFilter(tab.value)}
             className={cn(
-              'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
-              channelFilter === tab.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              'rounded-md px-3 py-1.5 text-xs font-medium tracking-tight transition-all',
+              channelFilter === tab.value
+                ? 'bg-white text-gray-900 shadow-[0_1px_2px_rgba(16,24,40,0.06)] ring-1 ring-gray-200/80'
+                : 'text-gray-500 hover:text-gray-800'
             )}
           >
             {tab.label}
@@ -495,39 +518,46 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
       {channelFilter === 'all' ? (
         <>
           {/* Overall KPIs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <SentimentStatCard label="Overall Score" value={`${overallScore > 0 ? '+' : ''}${overallScore}`} subtitle="Scale: -100 to +100" icon={overallScore >= 0 ? Smile : Frown} color={overallScore >= 20 ? 'bg-green-500' : overallScore >= -20 ? 'bg-gray-500' : 'bg-red-500'} bgColor="border-gray-200 bg-white" />
-            <SentimentStatCard label="Positive" value={totals.positive} subtitle={`${totals.total > 0 ? Math.round((totals.positive / totals.total) * 100) : 0}% of total`} icon={Smile} color="bg-green-500" bgColor="border-green-100 bg-green-50" />
-            <SentimentStatCard label="Neutral" value={totals.neutral} subtitle={`${totals.total > 0 ? Math.round((totals.neutral / totals.total) * 100) : 0}% of total`} icon={Meh} color="bg-gray-500" bgColor="border-gray-100 bg-gray-50" />
-            <SentimentStatCard label="Negative" value={totals.negative} subtitle={`${totals.total > 0 ? Math.round((totals.negative / totals.total) * 100) : 0}% of total`} icon={Frown} color="bg-red-500" bgColor="border-red-100 bg-red-50" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-5">
+            <SentimentStatCard label="Overall Score" value={`${overallScore > 0 ? '+' : ''}${overallScore}`} subtitle="Scale: -100 to +100" icon={overallScore >= 0 ? Smile : Frown} color={overallScore >= 20 ? 'bg-emerald-500' : overallScore >= -20 ? 'bg-gray-500' : 'bg-red-500'} bgColor="border-gray-200/80 bg-white" />
+            <SentimentStatCard label="Positive" value={totals.positive} subtitle={`${totals.total > 0 ? Math.round((totals.positive / totals.total) * 100) : 0}% of total`} icon={Smile} color="bg-emerald-500" bgColor="border-emerald-100 bg-emerald-50/50" />
+            <SentimentStatCard label="Neutral" value={totals.neutral} subtitle={`${totals.total > 0 ? Math.round((totals.neutral / totals.total) * 100) : 0}% of total`} icon={Meh} color="bg-gray-500" bgColor="border-gray-200/80 bg-gray-50/50" />
+            <SentimentStatCard label="Negative" value={totals.negative} subtitle={`${totals.total > 0 ? Math.round((totals.negative / totals.total) * 100) : 0}% of total`} icon={Frown} color="bg-red-500" bgColor="border-red-100 bg-red-50/50" />
           </div>
 
           {/* Channel comparison cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-5">
             {channelSentiments.map(ch => (
               <button
                 key={ch.channel}
                 onClick={() => ch.total > 0 ? setModalData({ title: `${ch.channel.charAt(0).toUpperCase() + ch.channel.slice(1)} — Sentiment Details`, messages: ch.messages }) : null}
-                className={cn('rounded-xl border border-gray-200 bg-white p-4 text-left transition-all', ch.total > 0 && 'hover:border-teal-300 hover:shadow-sm cursor-pointer')}
+                className={cn(
+                  'group rounded-2xl border border-gray-200/80 bg-white p-5 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)] transition-all',
+                  ch.total > 0 && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(16,24,40,0.06),0_2px_4px_rgba(16,24,40,0.04)] hover:border-gray-300'
+                )}
               >
-                <p className="text-sm font-semibold text-gray-800 capitalize mb-2">{ch.channel}</p>
-                <p className={cn('text-2xl font-bold', ch.score >= 20 ? 'text-green-600' : ch.score >= -20 ? 'text-gray-700' : 'text-red-600')}>
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 capitalize">{ch.channel}</p>
+                  <span className="text-[10px] tabular-nums text-gray-400">{ch.total} msgs</span>
+                </div>
+                <p className={cn(
+                  'mt-2 text-3xl font-semibold leading-tight tabular-nums tracking-tight',
+                  ch.score >= 20 ? 'text-emerald-600' : ch.score >= -20 ? 'text-gray-700' : 'text-red-600'
+                )}>
                   {ch.total > 0 ? `${ch.score > 0 ? '+' : ''}${ch.score}` : '--'}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">{ch.total} messages</p>
                 {ch.total > 0 && (
                   <>
-                    <div className="flex items-center gap-1 h-2 rounded-full overflow-hidden bg-gray-100 mt-2">
-                      {ch.positive > 0 && <div className="h-full bg-green-500" style={{ width: `${(ch.positive / ch.total) * 100}%` }} />}
+                    <div className="flex items-center gap-0.5 h-1.5 rounded-full overflow-hidden bg-gray-100 mt-3">
+                      {ch.positive > 0 && <div className="h-full bg-emerald-500" style={{ width: `${(ch.positive / ch.total) * 100}%` }} />}
                       {ch.neutral > 0 && <div className="h-full bg-gray-300" style={{ width: `${(ch.neutral / ch.total) * 100}%` }} />}
                       {ch.negative > 0 && <div className="h-full bg-red-400" style={{ width: `${(ch.negative / ch.total) * 100}%` }} />}
                     </div>
-                    <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                    <div className="flex justify-between text-[10px] tabular-nums text-gray-500 mt-1.5">
                       <span>{ch.positive} pos</span>
                       <span>{ch.neutral} neu</span>
                       <span>{ch.negative} neg</span>
                     </div>
-                    <p className="text-[10px] text-teal-600 text-center mt-1">Click for details</p>
                   </>
                 )}
               </button>
@@ -539,27 +569,27 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
         (() => {
           const ch = channelSentiments.find(c => c.channel === channelFilter) || { channel: channelFilter, positive: 0, neutral: 0, negative: 0, total: 0, score: 0, messages: [] }
           return (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <SentimentStatCard label={`${channelFilter.charAt(0).toUpperCase() + channelFilter.slice(1)} Score`} value={ch.total > 0 ? `${ch.score > 0 ? '+' : ''}${ch.score}` : '--'} subtitle={`${ch.total} messages`} icon={ch.score >= 0 ? Smile : Frown} color={ch.score >= 20 ? 'bg-green-500' : ch.score >= -20 ? 'bg-gray-500' : 'bg-red-500'} bgColor="border-gray-200 bg-white" />
-              <SentimentStatCard label="Positive" value={ch.positive} subtitle={`${ch.total > 0 ? Math.round((ch.positive / ch.total) * 100) : 0}%`} icon={Smile} color="bg-green-500" bgColor="border-green-100 bg-green-50" />
-              <SentimentStatCard label="Neutral" value={ch.neutral} subtitle={`${ch.total > 0 ? Math.round((ch.neutral / ch.total) * 100) : 0}%`} icon={Meh} color="bg-gray-500" bgColor="border-gray-100 bg-gray-50" />
-              <SentimentStatCard label="Negative" value={ch.negative} subtitle={`${ch.total > 0 ? Math.round((ch.negative / ch.total) * 100) : 0}%`} icon={Frown} color="bg-red-500" bgColor="border-red-100 bg-red-50" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-5">
+              <SentimentStatCard label={`${channelFilter.charAt(0).toUpperCase() + channelFilter.slice(1)} Score`} value={ch.total > 0 ? `${ch.score > 0 ? '+' : ''}${ch.score}` : '--'} subtitle={`${ch.total} messages`} icon={ch.score >= 0 ? Smile : Frown} color={ch.score >= 20 ? 'bg-emerald-500' : ch.score >= -20 ? 'bg-gray-500' : 'bg-red-500'} bgColor="border-gray-200/80 bg-white" />
+              <SentimentStatCard label="Positive" value={ch.positive} subtitle={`${ch.total > 0 ? Math.round((ch.positive / ch.total) * 100) : 0}%`} icon={Smile} color="bg-emerald-500" bgColor="border-emerald-100 bg-emerald-50/50" />
+              <SentimentStatCard label="Neutral" value={ch.neutral} subtitle={`${ch.total > 0 ? Math.round((ch.neutral / ch.total) * 100) : 0}%`} icon={Meh} color="bg-gray-500" bgColor="border-gray-200/80 bg-gray-50/50" />
+              <SentimentStatCard label="Negative" value={ch.negative} subtitle={`${ch.total > 0 ? Math.round((ch.negative / ch.total) * 100) : 0}%`} icon={Frown} color="bg-red-500" bgColor="border-red-100 bg-red-50/50" />
             </div>
           )
         })()
       )}
 
       {/* Overall Sentiment Score Bar — clickable */}
-      <ReportCard title="Overall Sentiment Score" description={`Based on ${totals.total} classified messages — click to see details`}>
-        <button className="w-full text-left hover:opacity-90 transition-opacity" onClick={() => setModalData({ title: 'All Messages — Sentiment Details', messages: allMessages })}>
+      <ReportCard title="Overall Sentiment Score" description={`Based on ${totals.total} classified messages — click to see details`} icon={Activity} accent="teal">
+        <button className="w-full text-left hover:opacity-90 transition-opacity py-2" onClick={() => setModalData({ title: 'All Messages — Sentiment Details', messages: allMessages })}>
           <SentimentScoreBar score={overallScore} />
-          <p className="text-[10px] text-teal-600 text-center mt-2">Click to view all messages</p>
+          <p className="text-[10px] text-teal-600 text-center mt-3">Click to view all messages</p>
         </button>
       </ReportCard>
 
       {/* Daily Sentiment Trend */}
-      <ReportCard title="Daily Sentiment Trend (30 Days)" description="How customer sentiment changes over time">
-        <div className="space-y-1">
+      <ReportCard title="Daily Sentiment Trend (30 Days)" description="How customer sentiment changes over time" icon={BarChart3} accent="blue">
+        <div className="space-y-2">
           <div className="flex items-end gap-0.5" style={{ height: 150 }}>
             {dailyTrend.map((d, i) => {
               const total = d.positive + d.neutral + d.negative
@@ -569,31 +599,31 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
               const negPct = total > 0 ? (d.negative / total) * 100 : 0
               return (
                 <div key={i} className="flex-1 flex flex-col group relative" style={{ height: `${pct}%` }}>
-                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-800 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10">
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-900 text-white text-[10px] px-1.5 py-0.5 rounded-md whitespace-nowrap z-10 tabular-nums shadow-md">
                     +{d.positive} / {d.neutral} / -{d.negative}
                   </div>
-                  <div className="bg-red-400 rounded-t" style={{ height: `${negPct}%`, minHeight: d.negative > 0 ? 2 : 0 }} />
+                  <div className="bg-red-400 rounded-t-sm" style={{ height: `${negPct}%`, minHeight: d.negative > 0 ? 2 : 0 }} />
                   <div className="bg-gray-300 flex-1" />
-                  <div className="bg-green-500 rounded-b" style={{ height: `${posPct}%`, minHeight: d.positive > 0 ? 2 : 0 }} />
+                  <div className="bg-emerald-500 rounded-b-sm" style={{ height: `${posPct}%`, minHeight: d.positive > 0 ? 2 : 0 }} />
                 </div>
               )
             })}
           </div>
-          <div className="flex justify-between text-[10px] text-gray-400 px-0.5">
+          <div className="flex justify-between text-[10px] tabular-nums text-gray-400 px-0.5">
             <span>{dailyTrend[0]?.date?.slice(5)}</span>
             <span>{dailyTrend[14]?.date?.slice(5)}</span>
             <span>{dailyTrend[29]?.date?.slice(5)}</span>
           </div>
-          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-green-500" /> Positive</span>
-            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-gray-300" /> Neutral</span>
-            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-red-400" /> Negative</span>
+          <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Positive</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-gray-300" /> Neutral</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-400" /> Negative</span>
           </div>
         </div>
       </ReportCard>
 
       {/* Company-wise Sentiment Breakdown */}
-      <ReportCard title={`Sentiment by Company${channelFilter !== 'all' ? ` (${channelFilter})` : ''}`} description="Sorted by worst score first — companies needing attention at the top">
+      <ReportCard title={`Sentiment by Company${channelFilter !== 'all' ? ` (${channelFilter})` : ''}`} description="Sorted by worst score first — companies needing attention at the top" icon={Building2} accent="amber">
         <div className="space-y-3">
           {companies.map((co) => {
             // Filter messages by selected channel
@@ -605,44 +635,50 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
             const fTotal = filteredMsgs.length
             const fScore = fTotal > 0 ? Math.round(((fPos - fNeg) / fTotal) * 100) : 0
             return (
-            <div key={co.accountName} className="rounded-xl border border-gray-200 p-4 hover:border-teal-300 hover:shadow-sm transition-all cursor-pointer" onClick={() => setModalData({ title: `${co.accountName}${channelFilter !== 'all' ? ` (${channelFilter})` : ''} — Sentiment Details`, messages: filteredMsgs })}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <span className="font-semibold text-gray-800">{co.accountName}</span>
+            <div key={co.accountName} className="rounded-xl border border-gray-200/80 bg-white p-4 hover:border-gray-300 hover:shadow-[0_4px_10px_rgba(16,24,40,0.06),0_2px_4px_rgba(16,24,40,0.04)] transition-all cursor-pointer" onClick={() => setModalData({ title: `${co.accountName}${channelFilter !== 'all' ? ` (${channelFilter})` : ''} — Sentiment Details`, messages: filteredMsgs })}>
+              <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-semibold tracking-tight text-gray-900 truncate">{co.accountName}</span>
                   <span className={cn(
-                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                    co.trend === 'declining' ? 'bg-red-50 text-red-700' : co.trend === 'improving' ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-600'
+                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1',
+                    co.trend === 'declining'
+                      ? 'bg-red-50 text-red-700 ring-red-200'
+                      : co.trend === 'improving'
+                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                        : 'bg-gray-50 text-gray-600 ring-gray-200'
                   )}>
-                    {co.trend === 'declining' ? <TrendingDown className="h-3 w-3" /> : co.trend === 'improving' ? <TrendingUp className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                    {co.trend === 'declining' ? <TrendingDown className="h-3 w-3" strokeWidth={2.5} /> : co.trend === 'improving' ? <TrendingUp className="h-3 w-3" strokeWidth={2.5} /> : <Minus className="h-3 w-3" strokeWidth={2.5} />}
                     {co.trend}
                   </span>
                   {co.atRiskConversations > 0 && (
-                    <Badge variant="danger" size="sm">
-                      <AlertTriangle className="h-3 w-3 mr-0.5" />
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 ring-1 ring-red-200">
+                      <AlertTriangle className="h-3 w-3" strokeWidth={2.5} />
                       {co.atRiskConversations} at risk
-                    </Badge>
+                    </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={cn('text-lg font-bold', fScore >= 20 ? 'text-green-600' : fScore >= -20 ? 'text-gray-600' : 'text-red-600')}>
+                <div className="flex items-baseline gap-1">
+                  <span className={cn(
+                    'text-xl font-semibold tabular-nums tracking-tight',
+                    fScore >= 20 ? 'text-emerald-600' : fScore >= -20 ? 'text-gray-700' : 'text-red-600'
+                  )}>
                     {fScore > 0 ? '+' : ''}{fScore}
                   </span>
-                  <span className="text-xs text-gray-400">/ 100</span>
+                  <span className="text-[11px] tabular-nums text-gray-400">/ 100</span>
                 </div>
               </div>
 
               {/* Sentiment bar */}
-              <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden bg-gray-100">
-                {fPos > 0 && <div className="h-full bg-green-500 transition-all rounded-l-full" style={{ width: `${(fPos / fTotal) * 100}%` }} />}
+              <div className="flex items-center gap-0.5 h-2 rounded-full overflow-hidden bg-gray-100">
+                {fPos > 0 && <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(fPos / fTotal) * 100}%` }} />}
                 {fNeu > 0 && <div className="h-full bg-gray-300 transition-all" style={{ width: `${(fNeu / fTotal) * 100}%` }} />}
-                {fNeg > 0 && <div className="h-full bg-red-400 transition-all rounded-r-full" style={{ width: `${(fNeg / fTotal) * 100}%` }} />}
+                {fNeg > 0 && <div className="h-full bg-red-400 transition-all" style={{ width: `${(fNeg / fTotal) * 100}%` }} />}
               </div>
-              <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+              <div className="flex justify-between text-[10px] tabular-nums text-gray-500 mt-1.5">
                 <span>{fPos} positive ({fTotal > 0 ? Math.round((fPos / fTotal) * 100) : 0}%)</span>
                 <span>{fNeu} neutral</span>
                 <span>{fNeg} negative ({fTotal > 0 ? Math.round((fNeg / fTotal) * 100) : 0}%)</span>
               </div>
-              <p className="text-[10px] text-teal-600 text-center mt-1">Click to view messages</p>
             </div>
             )
           })}
@@ -653,17 +689,17 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
       </ReportCard>
 
       {/* Sentiment by Category */}
-      <ReportCard title="Sentiment by Category" description="Click any category to view messages — click sentiment bar sections to filter">
-        <div className="space-y-2">
+      <ReportCard title="Sentiment by Category" description="Click any category to view messages — click sentiment bar sections to filter" icon={BarChart3} accent="indigo">
+        <div className="space-y-1.5">
           {categories.map((cat) => {
             const negPct = cat.total > 0 ? Math.round((cat.negative / cat.total) * 100) : 0
             return (
-              <div key={cat.category} className="flex items-center gap-3 rounded-lg px-2 py-1.5 -mx-2 hover:bg-gray-50 cursor-pointer transition-colors"
+              <div key={cat.category} className="flex items-center gap-3 rounded-lg px-2 py-1.5 -mx-2 hover:bg-gray-50/60 cursor-pointer transition-colors"
                 onClick={() => setModalData({ title: `${cat.category} — Sentiment Details`, messages: cat.messages })}>
-                <span className="text-sm text-gray-700 w-40 truncate shrink-0 font-medium">{cat.category}</span>
-                <div className="flex-1 flex items-center gap-0.5 h-5 rounded overflow-hidden bg-gray-100">
+                <span className="text-xs font-medium text-gray-700 w-40 truncate shrink-0">{cat.category}</span>
+                <div className="flex-1 flex items-center gap-0.5 h-2 rounded-full overflow-hidden bg-gray-100">
                   {cat.positive > 0 && (
-                    <div className="h-full bg-green-500 hover:bg-green-600 transition-colors"
+                    <div className="h-full bg-emerald-500 hover:bg-emerald-600 transition-colors"
                       style={{ width: `${(cat.positive / cat.total) * 100}%` }}
                       title={`${cat.positive} positive — click to filter`}
                       onClick={(e) => { e.stopPropagation(); setModalData({ title: `${cat.category} — Positive Messages`, messages: cat.messages, initialFilter: 'positive' }) }}
@@ -684,7 +720,7 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
                     />
                   )}
                 </div>
-                <span className={cn('text-xs font-semibold w-10 text-right', negPct >= 30 ? 'text-red-600' : 'text-gray-500')}>
+                <span className={cn('text-xs font-semibold tabular-nums tracking-tight w-10 text-right', negPct >= 30 ? 'text-red-600' : 'text-gray-500')}>
                   {negPct}%
                 </span>
                 <ArrowRight className="h-3 w-3 text-gray-300 shrink-0" />
@@ -696,28 +732,28 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
 
       {/* At-Risk Conversations */}
       {atRisk.length > 0 && (
-        <ReportCard title={`At-Risk Conversations (${atRisk.length})`} description="Conversations with 2+ negative sentiment messages — need immediate attention">
+        <ReportCard title={`At-Risk Conversations (${atRisk.length})`} description="Conversations with 2+ negative sentiment messages — need immediate attention" icon={AlertCircle} accent="red">
           <div className="divide-y divide-gray-100">
             {atRisk.map((conv) => (
               <Link
                 key={conv.conversationId}
                 href={`/conversations/${conv.conversationId}`}
-                className="flex items-center gap-3 py-3 px-2 -mx-2 rounded-lg hover:bg-red-50 transition-colors group"
+                className="flex items-center gap-3 py-3 px-2 -mx-2 rounded-lg hover:bg-red-50/50 transition-colors group"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 text-red-600 shrink-0">
-                  <Frown className="h-4 w-4" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-700 ring-1 ring-red-200 shrink-0">
+                  <Frown className="h-4 w-4" strokeWidth={2} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 group-hover:text-red-700 truncate">{conv.participantName}</p>
+                  <p className="text-sm font-medium text-gray-900 group-hover:text-red-700 truncate">{conv.participantName}</p>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <span>{conv.accountName}</span>
+                    <span className="truncate">{conv.accountName}</span>
                     <span>&middot;</span>
                     <Badge variant={conv.channel === 'teams' ? 'info' : 'default'} size="sm">{conv.channel}</Badge>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-bold text-red-600">{conv.negativeCount} negative</p>
-                  <p className="text-xs text-gray-400">{timeAgo(conv.lastNegativeAt)}</p>
+                  <p className="text-sm font-semibold tabular-nums tracking-tight text-red-600">{conv.negativeCount} negative</p>
+                  <p className="text-[11px] tabular-nums text-gray-400">{timeAgo(conv.lastNegativeAt)}</p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-red-500 shrink-0" />
               </Link>
@@ -727,7 +763,7 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
       )}
 
       {/* Response Impact */}
-      <ReportCard title="Response Impact" description="How companies are trending — improving, stable, or declining">
+      <ReportCard title="Response Impact" description="How companies are trending — improving, stable, or declining" icon={Activity} accent="green">
         <div className="grid grid-cols-3 gap-4">
           {(() => {
             const improving = companies.filter(c => c.trend === 'improving').length
@@ -735,20 +771,26 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
             const declining = companies.filter(c => c.trend === 'declining').length
             return (
               <>
-                <div className="rounded-xl border border-green-100 bg-green-50 p-4 text-center">
-                  <TrendingUp className="h-8 w-8 mx-auto text-green-500 mb-2" />
-                  <p className="text-2xl font-bold text-green-700">{improving}</p>
-                  <p className="text-xs text-green-600 mt-1">Improving</p>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4 text-center">
+                  <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                    <TrendingUp className="h-4.5 w-4.5" strokeWidth={2} />
+                  </div>
+                  <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-emerald-700">{improving}</p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-600">Improving</p>
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-center">
-                  <Minus className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                  <p className="text-2xl font-bold text-gray-700">{stable}</p>
-                  <p className="text-xs text-gray-500 mt-1">Stable</p>
+                <div className="rounded-xl border border-gray-200/80 bg-gray-50/50 p-4 text-center">
+                  <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-gray-100 text-gray-600 ring-1 ring-gray-200">
+                    <Minus className="h-4.5 w-4.5" strokeWidth={2} />
+                  </div>
+                  <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-gray-700">{stable}</p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Stable</p>
                 </div>
-                <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-center">
-                  <TrendingDown className="h-8 w-8 mx-auto text-red-500 mb-2" />
-                  <p className="text-2xl font-bold text-red-700">{declining}</p>
-                  <p className="text-xs text-red-600 mt-1">Declining</p>
+                <div className="rounded-xl border border-red-100 bg-red-50/50 p-4 text-center">
+                  <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-700 ring-1 ring-red-200">
+                    <TrendingDown className="h-4.5 w-4.5" strokeWidth={2} />
+                  </div>
+                  <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-red-700">{declining}</p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-red-600">Declining</p>
                 </div>
               </>
             )
@@ -757,51 +799,59 @@ export function SentimentAnalyticsTab({ dateStart }: { dateStart: string }) {
       </ReportCard>
 
       {/* Key Insights — actionable alerts */}
-      <ReportCard title="Key Insights" description="Actionable takeaways from sentiment analysis">
-        <div className="space-y-3">
+      <ReportCard title="Key Insights" description="Actionable takeaways from sentiment analysis" icon={Lightbulb} accent="amber">
+        <div className="space-y-2.5">
           {totals.negative > 0 && totals.total > 0 && (
-            <div className="flex items-start gap-3 rounded-lg bg-red-50 border border-red-200 p-3">
-              <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-red-800">
+            <div className="flex items-start gap-3 rounded-xl bg-red-50/50 ring-1 ring-red-200 p-3.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700 ring-1 ring-red-200 mt-0.5">
+                <AlertTriangle className="h-4 w-4" strokeWidth={2} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold tracking-tight text-red-800">
                   {Math.round((totals.negative / totals.total) * 100)}% of messages have negative sentiment
                 </p>
-                <p className="text-xs text-red-600 mt-0.5">
+                <p className="text-xs text-red-700 mt-0.5">
                   {totals.negative} out of {totals.total} classified messages. {atRisk.length > 0 ? `${atRisk.length} conversations are at risk.` : ''}
                 </p>
               </div>
             </div>
           )}
           {companies.filter(c => c.trend === 'declining').length > 0 && (
-            <div className="flex items-start gap-3 rounded-lg bg-amber-50 border border-amber-200 p-3">
-              <TrendingDown className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-amber-800">
+            <div className="flex items-start gap-3 rounded-xl bg-amber-50/50 ring-1 ring-amber-200 p-3.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-200 mt-0.5">
+                <TrendingDown className="h-4 w-4" strokeWidth={2} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold tracking-tight text-amber-800">
                   {companies.filter(c => c.trend === 'declining').length} companies have declining sentiment
                 </p>
-                <p className="text-xs text-amber-600 mt-0.5">
+                <p className="text-xs text-amber-700 mt-0.5">
                   {companies.filter(c => c.trend === 'declining').map(c => c.accountName).join(', ')} — review recent interactions.
                 </p>
               </div>
             </div>
           )}
           {categories.filter(c => c.total > 5 && (c.negative / c.total) > 0.3).length > 0 && (
-            <div className="flex items-start gap-3 rounded-lg bg-blue-50 border border-blue-200 p-3">
-              <MessageCircle className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-blue-800">High-friction categories detected</p>
-                <p className="text-xs text-blue-600 mt-0.5">
+            <div className="flex items-start gap-3 rounded-xl bg-blue-50/50 ring-1 ring-blue-200 p-3.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-200 mt-0.5">
+                <MessageCircle className="h-4 w-4" strokeWidth={2} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold tracking-tight text-blue-800">High-friction categories detected</p>
+                <p className="text-xs text-blue-700 mt-0.5">
                   {categories.filter(c => c.total > 5 && (c.negative / c.total) > 0.3).map(c => `${c.category} (${Math.round((c.negative / c.total) * 100)}% negative)`).join(', ')}
                 </p>
               </div>
             </div>
           )}
           {totals.positive > totals.negative && (
-            <div className="flex items-start gap-3 rounded-lg bg-green-50 border border-green-200 p-3">
-              <Smile className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-green-800">Overall sentiment is positive</p>
-                <p className="text-xs text-green-600 mt-0.5">
+            <div className="flex items-start gap-3 rounded-xl bg-emerald-50/50 ring-1 ring-emerald-200 p-3.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 mt-0.5">
+                <Smile className="h-4 w-4" strokeWidth={2} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold tracking-tight text-emerald-800">Overall sentiment is positive</p>
+                <p className="text-xs text-emerald-700 mt-0.5">
                   {Math.round((totals.positive / totals.total) * 100)}% positive — customers are generally satisfied.
                 </p>
               </div>

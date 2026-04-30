@@ -37,19 +37,19 @@ export function DateRangePicker({ activeRange, onChange, customFrom, customTo, o
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1">
+      <div className="flex items-center gap-0.5 rounded-lg border border-gray-200/80 bg-gray-50 p-1 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
         {presets.map((preset) => (
           <button
             key={preset.value}
             onClick={() => handlePresetClick(preset.value)}
             className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium tracking-tight transition-all',
               activeRange === preset.value
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-white text-gray-900 shadow-[0_1px_2px_rgba(16,24,40,0.06)] ring-1 ring-gray-200/80'
+                : 'text-gray-500 hover:text-gray-800'
             )}
           >
-            {preset.value === 'custom' && <Calendar className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
+            {preset.value === 'custom' && <Calendar className="mr-1 h-3.5 w-3.5" strokeWidth={2} />}
             {preset.label}
           </button>
         ))}
@@ -60,14 +60,14 @@ export function DateRangePicker({ activeRange, onChange, customFrom, customTo, o
             type="date"
             value={customFrom || ''}
             onChange={(e) => onCustomChange?.(e.target.value, customTo || '')}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 tabular-nums focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           />
-          <span className="text-sm text-gray-400">to</span>
+          <span className="text-xs text-gray-400">to</span>
           <input
             type="date"
             value={customTo || ''}
             onChange={(e) => onCustomChange?.(customFrom || '', e.target.value)}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 tabular-nums focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
           />
         </div>
       )}

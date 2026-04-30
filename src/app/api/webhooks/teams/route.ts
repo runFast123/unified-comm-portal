@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase-server'
 import { logInfo, logError } from '@/lib/logger'
 import {
@@ -7,17 +7,20 @@ import {
   findOrCreateConversation,
   getAccountSettings,
 } from '@/lib/api-helpers'
+import { evaluateRouting, applyRoutingResult } from '@/lib/routing-engine'
+import { getRequestId, REQUEST_ID_HEADER } from '@/lib/request-id'
 
 export async function POST(request: Request) {
+  const requestId = await getRequestId()
   try {
     // Validate webhook secret
     if (!validateWebhookSecret(request)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized', request_id: requestId }, { status: 401 })
     }
 
     const body = await request.json()
 
-    // Accept n8n webhook payload format
+    // Accept webhook payload format
     const {
       account_id,
       sender_name,
@@ -37,29 +40,29 @@ export async function POST(request: Request) {
 
     if (!account_id) {
       return NextResponse.json(
-        { error: 'Missing required field: account_id' },
+        { error: 'Missing required field: account_id', request_id: requestId },
         { status: 400 }
       )
     }
 
     // Rate limit per account
-    if (!checkRateLimit(`teams_${account_id}`)) {
+    if (!(await checkRateLimit(`teams_${account_id}`, 100, 60))) {
       return NextResponse.json(
-        { error: 'Rate limit exceeded' },
+        { error: 'Rate limit exceeded', request_id: requestId },
         { status: 429 }
       )
     }
 
     if (!sender_name || (typeof sender_name === 'string' && sender_name.trim().length === 0)) {
       return NextResponse.json(
-        { error: 'Missing or empty required field: sender_name' },
+        { error: 'Missing or empty required field: sender_name', request_id: requestId },
         { status: 400 }
       )
     }
 
     if (!message_text || (typeof message_text === 'string' && message_text.trim().length === 0)) {
       return NextResponse.json(
-        { error: 'Missing or empty required field: message_text' },
+        { error: 'Missing or empty required field: message_text', request_id: requestId },
         { status: 400 }
       )
     }
@@ -81,14 +84,14 @@ export async function POST(request: Request) {
 
     if (accountError || !accountRow) {
       return NextResponse.json(
-        { error: 'Account not found' },
+        { error: 'Account not found', request_id: requestId },
         { status: 404 }
       )
     }
 
     if (!accountRow.is_active) {
       return NextResponse.json(
-        { error: 'Account is not active' },
+        { error: 'Account is not active', request_id: requestId },
         { status: 403 }
       )
     }
@@ -175,9 +178,12 @@ export async function POST(request: Request) {
       .single()
 
     if (msgError || !message) {
-      console.error('Failed to store Teams message:', msgError)
+      logError('webhook', 'teams_store_failed', msgError?.message || 'unknown insert failure', {
+        request_id: requestId,
+        account_id,
+      })
       return NextResponse.json(
-        { error: 'Failed to store message' },
+        { error: 'Failed to store message', request_id: requestId },
         { status: 500 }
       )
     }
@@ -193,9 +199,40 @@ export async function POST(request: Request) {
         .eq('replied', false)
 
       return NextResponse.json(
-        { message_id: message.id, conversation_id: conversationId, is_agent: true },
+        { message_id: message.id, conversation_id: conversationId, is_agent: true, request_id: requestId },
         { status: 201 }
       )
+    }
+
+    // Routing rules — only for inbound (customer) messages, before AI dispatch.
+    // Fail-soft: a routing-engine error must NOT block the webhook from
+    // returning success.
+    try {
+      const routingResult = await evaluateRouting({
+        channel: 'teams',
+        account_id,
+        sender_email: sender_email || null,
+        sender_phone: null,
+        subject: null,
+        message_text: messageText,
+      })
+      if (routingResult.matched_rule_ids.length > 0) {
+        const applied = await applyRoutingResult(supabase, conversationId, routingResult)
+        logInfo('webhook', 'rule_matched', `Routing matched ${routingResult.matched_rule_ids.length} rule(s)`, {
+          request_id: requestId,
+          account_id,
+          message_id: message.id,
+          conversation_id: conversationId,
+          matched_rule_ids: routingResult.matched_rule_ids,
+          applied,
+        })
+      }
+    } catch (routingErr) {
+      logError('webhook', 'routing_failed', routingErr instanceof Error ? routingErr.message : 'unknown', {
+        request_id: requestId,
+        account_id,
+        message_id: message.id,
+      })
     }
 
     // Trigger notifications for customer messages only (async, non-blocking)
@@ -219,49 +256,45 @@ export async function POST(request: Request) {
     // Get account settings for phase flags
     const account = await getAccountSettings(supabase, account_id)
     const origin = new URL(request.url).origin
-    let skipAIReply = false
+    // Forward request id to classify + ai-reply so the full pipeline shares
+    // one correlation id (see email webhook for the same pattern).
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Webhook-Secret': process.env.WEBHOOK_SECRET || '',
+      [REQUEST_ID_HEADER]: requestId,
+    }
 
-    // Phase 1: AI Classification (must complete before Phase 2)
+    // Phase 1 + 2 fire asynchronously via `after()` so the webhook returns in
+    // ~100ms and the poller can move to the next chat message instead of
+    // blocking 30s per message on AI calls. Same pattern used in the email
+    // webhook. Trade-off: phase-2 may run even if phase-1 would have labelled
+    // the message Newsletter/Marketing — the AI reply just sits as
+    // pending_approval; admin can reject. Not worth serialising phases.
     if (account.phase1_enabled) {
-      try {
-        const classifyRes = await fetch(`${origin}/api/classify`, {
+      after(() =>
+        fetch(`${origin}/api/classify`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || '',
-          },
+          headers,
           body: JSON.stringify({
             message_id: message.id,
             message_text: messageText,
             channel: 'teams',
             account_id,
           }),
-          signal: AbortSignal.timeout(30000),
-        })
-
-        // Check if classification marked it as Newsletter/Marketing → skip AI reply
-        if (classifyRes.ok) {
-          try {
-            const classifyData = await classifyRes.json()
-            if (classifyData.category === 'Newsletter/Marketing') {
-              skipAIReply = true
-            }
-          } catch { /* ignore parse errors */ }
-        }
-      } catch (classifyError) {
-        console.error(`Phase 1 classification failed [message_id=${message.id}, account_id=${account_id}, channel=teams]:`, classifyError instanceof Error ? classifyError.message : classifyError)
-      }
+        }).catch((err) =>
+          console.error(
+            `Phase 1 classify dispatch failed [message_id=${message.id}]:`,
+            err instanceof Error ? err.message : err
+          )
+        )
+      )
     }
 
-    // Phase 2: AI Reply Generation — only if not classified as spam/newsletter
-    if (account.phase2_enabled && !skipAIReply) {
-      try {
-        await fetch(`${origin}/api/ai-reply`, {
+    if (account.phase2_enabled) {
+      after(() =>
+        fetch(`${origin}/api/ai-reply`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Webhook-Secret': process.env.N8N_WEBHOOK_SECRET || '',
-          },
+          headers,
           body: JSON.stringify({
             message_id: message.id,
             message_text: messageText,
@@ -269,23 +302,30 @@ export async function POST(request: Request) {
             account_id,
             conversation_id: conversationId,
           }),
-          signal: AbortSignal.timeout(30000),
-        })
-      } catch (replyError) {
-        console.error(`Phase 2 AI reply generation failed [message_id=${message.id}, account_id=${account_id}, channel=teams]:`, replyError instanceof Error ? replyError.message : replyError)
-      }
+        }).catch((err) =>
+          console.error(
+            `Phase 2 AI reply dispatch failed [message_id=${message.id}]:`,
+            err instanceof Error ? err.message : err
+          )
+        )
+      )
     }
 
-    logInfo('webhook', 'teams_received', `Teams message from ${sender_name}`, { account_id, message_id: message.id })
+    logInfo('webhook', 'teams_received', `Teams message from ${sender_name}`, {
+      request_id: requestId,
+      account_id,
+      message_id: message.id,
+    })
     return NextResponse.json(
-      { message_id: message.id, conversation_id: conversationId },
+      { message_id: message.id, conversation_id: conversationId, request_id: requestId },
       { status: 201 }
     )
   } catch (error) {
-    console.error('Teams webhook error:', error)
-    logError('webhook', 'teams_inbound', error instanceof Error ? error.message : 'Unknown error')
+    logError('webhook', 'teams_inbound', error instanceof Error ? error.message : 'Unknown error', {
+      request_id: requestId,
+    })
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', request_id: requestId },
       { status: 500 }
     )
   }

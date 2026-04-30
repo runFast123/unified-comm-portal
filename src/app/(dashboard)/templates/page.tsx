@@ -27,6 +27,7 @@ import { Modal } from '@/components/ui/modal'
 import { Toggle } from '@/components/ui/toggle'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { ReplyTemplate } from '@/types/database'
 import { cn, truncate, timeAgo } from '@/lib/utils'
 import { useUser } from '@/context/user-context'
@@ -297,15 +298,47 @@ export default function TemplatesPage() {
 
   if (loading) {
     return (
-      <div className="flex h-80 items-center justify-center animate-fade-in">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-44" />
+            <Skeleton className="h-4 w-72" />
           </div>
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-700">Loading templates</p>
-            <p className="text-xs text-gray-400 mt-1">Fetching reply templates...</p>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-24 rounded-lg" />
+            <Skeleton className="h-9 w-28 rounded-lg" />
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]"
+            >
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-lg" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3 w-24 rounded" />
+                  <Skeleton className="h-6 w-12 rounded" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <Skeleton className="h-11 w-full" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 border-t border-gray-100 px-4 py-3">
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3 w-40 rounded" />
+                <Skeleton className="h-3 w-64 rounded" />
+              </div>
+              <Skeleton className="h-4 w-20 rounded-full" />
+              <Skeleton className="h-8 w-20 rounded-lg" />
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -451,13 +484,22 @@ export default function TemplatesPage() {
       <Card>
         {filteredTemplates.length === 0 ? (
           <EmptyState
-            icon={<FileQuestion className="h-12 w-12" />}
-            title="No templates found"
+            icon={FileQuestion}
+            title={templates.length === 0 ? 'No templates yet' : 'No templates found'}
             description={
               templates.length === 0
-                ? 'No reply templates have been created yet. Add your first template to get started.'
+                ? 'Reply templates let you answer common questions with one click. Create your first template to get started.'
                 : 'Try adjusting your search or filter criteria.'
             }
+            action={
+              templates.length === 0 ? (
+                <Button variant="primary" onClick={handleOpenAdd}>
+                  <Plus className="h-4 w-4" />
+                  Create template
+                </Button>
+              ) : undefined
+            }
+            hint={templates.length === 0 ? 'Tip: assign a shortcut to paste a template into the reply composer instantly.' : undefined}
           />
         ) : (
           <Table>

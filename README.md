@@ -15,7 +15,6 @@ A production-grade, AI-powered multi-channel customer communication platform tha
 | **Styling** | Tailwind CSS | 4.2.2 |
 | **Database** | Supabase (PostgreSQL + Auth + Realtime + RLS) | -- |
 | **AI** | NVIDIA NIM API (OpenAI-compatible) | -- |
-| **Automation** | n8n Cloud | -- |
 | **Icons** | Lucide React | 0.577.0 |
 | **Charts** | Recharts | 3.8.0 |
 | **PDF Export** | jsPDF + AutoTable | 4.2.1 |
@@ -27,7 +26,7 @@ A production-grade, AI-powered multi-channel customer communication platform tha
 ## Features
 
 ### Multi-Channel Communication
-- **Email** -- Gmail integration via n8n webhooks with SMTP reply sending
+- **Email** -- Gmail integration via inbound webhooks with SMTP reply sending
 - **Microsoft Teams** -- Polling-based message monitoring via Microsoft Graph API
 - **WhatsApp** -- Meta Business API webhook integration with verification
 - Unified inbox with conversation threading across all channels
@@ -96,12 +95,11 @@ A production-grade, AI-powered multi-channel customer communication platform tha
 - **AI Settings** -- Model selector (12 NVIDIA models), temperature, max tokens, system prompts per channel
 - **Channels** -- Channel configuration management
 - **Notifications** -- Per-account alert rules (Slack webhook + Gmail SMTP)
-- **System Health** -- Connectivity checks for Supabase, n8n, AI API
+- **System Health** -- Connectivity checks for Supabase, AI API
 - **Users** -- User management with role assignment (Admin/Reviewer/Viewer)
 
 ### Integrations
 - **Google Sheets Sync** -- Import data from Google Sheets for AI context enrichment
-- **n8n Workflows** -- 20 workflows (10 monitors + 10 reply handlers) for all companies
 - **Slack** -- Block Kit formatted notifications via webhook
 - **Gmail SMTP** -- HTML email notifications
 
@@ -148,7 +146,6 @@ src/
         teams-reply/                # Teams reply delivery webhook
       classify/                     # AI message classification (Phase 1)
       ai-reply/                     # AI reply generation (Phase 2)
-      n8n/                          # n8n workflow trigger API
       suggest-replies/              # AI suggested replies
       notifications/send/           # Email + Slack notification dispatch
       export/                       # CSV export (messages, AI replies)
@@ -175,7 +172,7 @@ src/
   context/
     user-context.tsx                # Auth user context provider
 scripts/
-  create-teams-workflows.mjs       # Generate n8n Teams monitor workflows
+  create-teams-workflows.mjs       # Generate Teams monitor workflows
   update-all-teams-monitors.mjs    # Update all Teams polling workflows
 ```
 
@@ -244,9 +241,9 @@ Phase 2: AI Reply (/api/ai-reply)
     |
     v
 Agent Review (UI)
-    |-- Approve & Send --> n8n webhook --> channel API
-    |-- Edit & Send   --> n8n webhook --> channel API
-    |-- Manual Reply   --> n8n webhook --> channel API
+    |-- Approve & Send --> /api/send --> channel API
+    |-- Edit & Send   --> /api/send --> channel API
+    |-- Manual Reply   --> /api/send --> channel API
     |-- Reject
 ```
 
@@ -269,28 +266,6 @@ Agent Review (UI)
 
 ---
 
-## n8n Workflow Architecture
-
-### Per-Company Workflows (20 total)
-
-**Teams Monitor (10 workflows):**
-```
-Schedule (every 2 min) -> Get Last Poll Time -> Get My User ID (/me)
-  -> List All Chats -> Filter Active -> Fetch New Messages
-  -> Filter (skip agent's own, skip old) -> POST to Portal (/api/webhooks/teams)
-  -> Update Poll Time
-```
-
-**Reply Handler (10 workflows):**
-```
-Webhook Trigger (/webhook/{channel}-reply-{company})
-  -> Extract reply_text, teams_chat_id / to_email
-  -> Send via Microsoft Graph API / Gmail API
-  -> Return success/error
-```
-
----
-
 ## API Routes
 
 | Endpoint | Method | Auth | Purpose |
@@ -298,7 +273,6 @@ Webhook Trigger (/webhook/{channel}-reply-{company})
 | `/api/classify` | POST | Session/Webhook | AI message classification |
 | `/api/ai-reply` | POST | Session/Webhook | AI reply generation |
 | `/api/suggest-replies` | POST | Session | Generate 3 AI suggested replies |
-| `/api/n8n` | GET/POST | Session/Webhook | List workflows / trigger reply send |
 | `/api/export` | GET | Session | CSV export (messages, AI replies) |
 | `/api/sla-check` | POST | Webhook | Check and escalate SLA breaches |
 | `/api/test-ai` | POST | Session | Test AI provider connection |
@@ -309,7 +283,6 @@ Webhook Trigger (/webhook/{channel}-reply-{company})
 | `/api/webhooks/teams` | POST | Webhook | Receive Teams messages |
 | `/api/webhooks/whatsapp` | GET/POST | Verify Token | WhatsApp webhook |
 | `/api/webhooks/gmail-sent` | POST | Webhook | Sync outbound Gmail replies |
-| `/api/webhooks/teams-reply` | POST | Session | Send reply via Teams |
 
 ---
 
@@ -319,7 +292,6 @@ Webhook Trigger (/webhook/{channel}-reply-{company})
 
 - Node.js 18+
 - Supabase project ([supabase.com](https://supabase.com))
-- n8n Cloud instance ([n8n.io](https://n8n.io))
 - NVIDIA NIM API key ([build.nvidia.com](https://build.nvidia.com)) -- free tier available
 
 ### Installation
@@ -346,10 +318,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-# n8n
-N8N_BASE_URL=https://your-instance.app.n8n.cloud
-N8N_API_KEY=your-n8n-api-key
-N8N_WEBHOOK_SECRET=your-webhook-secret
+# Webhook
+WEBHOOK_SECRET=your-webhook-secret
 
 # AI (NVIDIA NIM)
 AI_BASE_URL=https://integrate.api.nvidia.com/v1

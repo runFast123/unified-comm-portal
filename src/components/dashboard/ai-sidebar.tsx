@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn, getSentimentColor, getUrgencyColor } from '@/lib/utils'
 import type { MessageClassification, AIReply } from '@/types/database'
+import { ThreadSummary } from '@/components/dashboard/thread-summary'
 
 export interface SentimentPoint {
   sentiment: 'positive' | 'neutral' | 'negative'
@@ -49,6 +50,8 @@ export interface AISidebarProps {
     participantName: string
     messageCount: number
   } | null
+  /** When provided, renders a "Summarize thread" AI action at the top of the sidebar. */
+  conversationId?: string
 }
 
 function SidebarSection({
@@ -279,6 +282,7 @@ export function AISidebar({
   customerHistory = [],
   channel,
   teamsContext,
+  conversationId,
 }: AISidebarProps) {
   const [draftExpanded, setDraftExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -304,6 +308,9 @@ export function AISidebar({
 
   return (
     <div className="space-y-3">
+      {/* AI-generated thread summary (on-demand) */}
+      {conversationId && <ThreadSummary conversationId={conversationId} />}
+
       {/* Teams Context Card */}
       {channel === 'teams' && teamsContext && (
         <div className="rounded-xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 p-3">

@@ -16,21 +16,60 @@ import {
   Legend,
 } from 'recharts'
 
-// Channel colors
-const CHANNEL_COLORS: Record<string, string> = {
-  teams: '#6264a7',
-  email: '#ea4335',
-  whatsapp: '#25d366',
-  Teams: '#6264a7',
-  Email: '#ea4335',
-  WhatsApp: '#25d366',
+// ─── Shared palette (Linear / Vercel / Stripe inspired) ──────────────────────
+export const CHART_COLORS = {
+  primary: '#0d9488',   // teal-600
+  positive: '#10b981',  // emerald-500
+  neutral: '#6b7280',   // gray-500
+  negative: '#ef4444',  // red-500
+  email: '#3b82f6',     // blue-500
+  teams: '#8b5cf6',     // violet-500
+  whatsapp: '#10b981',  // emerald-500
+} as const
+
+// Channel colors (lowercase + capitalised keys for Recharts legend convenience)
+export const CHANNEL_COLORS: Record<string, string> = {
+  teams: CHART_COLORS.teams,
+  email: CHART_COLORS.email,
+  whatsapp: CHART_COLORS.whatsapp,
+  Teams: CHART_COLORS.teams,
+  Email: CHART_COLORS.email,
+  WhatsApp: CHART_COLORS.whatsapp,
 }
 
-// Rotating colors for categories
-const CATEGORY_COLOR_PALETTE = [
+// Rotating colors for categories (soft, saturation-balanced)
+export const CATEGORY_COLOR_PALETTE = [
   '#3b82f6', '#ef4444', '#f59e0b', '#8b5cf6', '#06b6d4',
   '#10b981', '#f97316', '#ec4899', '#6b7280', '#84cc16',
 ]
+
+// ─── Shared axis + tooltip styling ───────────────────────────────────────────
+const AXIS_TICK = { fontSize: 11, fill: '#6b7280' }
+
+const TOOLTIP_STYLE: React.CSSProperties = {
+  backgroundColor: '#ffffff',
+  border: '1px solid #e5e7eb',
+  borderRadius: '0.5rem',
+  boxShadow: '0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06)',
+  fontSize: '12px',
+  padding: '8px 10px',
+}
+
+const TOOLTIP_LABEL_STYLE: React.CSSProperties = {
+  color: '#111827',
+  fontWeight: 600,
+  marginBottom: 4,
+}
+
+const TOOLTIP_ITEM_STYLE: React.CSSProperties = {
+  fontVariantNumeric: 'tabular-nums',
+  color: '#374151',
+}
+
+const LEGEND_STYLE: React.CSSProperties = {
+  fontSize: '11px',
+  color: '#6b7280',
+}
 
 // --- Chart Components (all accept data via props) ---
 
@@ -41,15 +80,20 @@ export function MessageVolumeChart({ data }: { data: { day: string; email: numbe
 
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-        <XAxis dataKey="day" fontSize={12} tickLine={false} />
-        <YAxis fontSize={12} tickLine={false} />
-        <Tooltip />
-        <Legend />
-        <Line type="monotone" dataKey="email" name="Email" stroke={CHANNEL_COLORS.email} strokeWidth={2} dot={{ r: 4 }} />
-        <Line type="monotone" dataKey="teams" name="Teams" stroke={CHANNEL_COLORS.teams} strokeWidth={2} dot={{ r: 4 }} />
-        <Line type="monotone" dataKey="whatsapp" name="WhatsApp" stroke={CHANNEL_COLORS.whatsapp} strokeWidth={2} dot={{ r: 4 }} />
+      <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis dataKey="day" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
+        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} />
+        <Tooltip
+          contentStyle={TOOLTIP_STYLE}
+          labelStyle={TOOLTIP_LABEL_STYLE}
+          itemStyle={TOOLTIP_ITEM_STYLE}
+          cursor={{ stroke: '#e5e7eb', strokeWidth: 1 }}
+        />
+        <Legend wrapperStyle={LEGEND_STYLE} iconType="circle" iconSize={8} />
+        <Line type="monotone" dataKey="email" name="Email" stroke={CHANNEL_COLORS.email} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+        <Line type="monotone" dataKey="teams" name="Teams" stroke={CHANNEL_COLORS.teams} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+        <Line type="monotone" dataKey="whatsapp" name="WhatsApp" stroke={CHANNEL_COLORS.whatsapp} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
       </LineChart>
     </ResponsiveContainer>
   )
@@ -68,14 +112,20 @@ export function ResponseTimeChart({ data, onBarClick }: { data: { channel: strin
 
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={data} onClick={(state: any) => { if (state?.activePayload?.[0]?.payload) handleBarClick(state.activePayload[0].payload) }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-        <XAxis dataKey="channel" fontSize={12} tickLine={false} />
-        <YAxis fontSize={12} tickLine={false} label={{ value: 'Minutes', angle: -90, position: 'insideLeft', fontSize: 12 }} />
-        <Tooltip formatter={(value) => [`${value} min`, 'Avg Response Time']} />
-        <Bar dataKey="avgMinutes" name="Avg Response Time" radius={[4, 4, 0, 0]} style={{ cursor: onBarClick ? 'pointer' : 'default' }}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} onClick={(state: any) => { if (state?.activePayload?.[0]?.payload) handleBarClick(state.activePayload[0].payload) }}>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis dataKey="channel" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
+        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} label={{ value: 'Minutes', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#6b7280' }} />
+        <Tooltip
+          contentStyle={TOOLTIP_STYLE}
+          labelStyle={TOOLTIP_LABEL_STYLE}
+          itemStyle={TOOLTIP_ITEM_STYLE}
+          cursor={{ fill: '#f9fafb' }}
+          formatter={(value) => [`${value} min`, 'Avg Response Time']}
+        />
+        <Bar dataKey="avgMinutes" name="Avg Response Time" radius={[6, 6, 0, 0]} style={{ cursor: onBarClick ? 'pointer' : 'default' }}>
           {data.map((item, i) => (
-            <Cell key={i} fill={CHANNEL_COLORS[item.channel] || '#6b7280'} />
+            <Cell key={i} fill={CHANNEL_COLORS[item.channel] || CHART_COLORS.neutral} />
           ))}
         </Bar>
       </BarChart>
@@ -95,18 +145,24 @@ export function CategoryPieChart({ data }: { data: { name: string; value: number
           data={data}
           cx="50%"
           cy="50%"
-          outerRadius={120}
-          innerRadius={60}
+          outerRadius={118}
+          innerRadius={64}
           paddingAngle={2}
           dataKey="value"
           label={({ name, percent }) => `${name} (${((percent ?? 0) * 100).toFixed(0)}%)`}
           fontSize={11}
+          stroke="#ffffff"
+          strokeWidth={2}
         >
           {data.map((entry, i) => (
             <Cell key={entry.name} fill={CATEGORY_COLOR_PALETTE[i % CATEGORY_COLOR_PALETTE.length]} />
           ))}
         </Pie>
-        <Tooltip />
+        <Tooltip
+          contentStyle={TOOLTIP_STYLE}
+          labelStyle={TOOLTIP_LABEL_STYLE}
+          itemStyle={TOOLTIP_ITEM_STYLE}
+        />
       </PieChart>
     </ResponsiveContainer>
   )
@@ -119,15 +175,20 @@ export function SentimentChart({ data }: { data: { day: string; positive: number
 
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-        <XAxis dataKey="day" fontSize={12} tickLine={false} />
-        <YAxis fontSize={12} tickLine={false} />
-        <Tooltip />
-        <Legend />
-        <Bar dataKey="positive" stackId="a" fill="#22c55e" name="Positive" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="neutral" stackId="a" fill="#9ca3af" name="Neutral" />
-        <Bar dataKey="negative" stackId="a" fill="#ef4444" name="Negative" radius={[4, 4, 0, 0]} />
+      <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis dataKey="day" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: '#e5e7eb' }} />
+        <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} />
+        <Tooltip
+          contentStyle={TOOLTIP_STYLE}
+          labelStyle={TOOLTIP_LABEL_STYLE}
+          itemStyle={TOOLTIP_ITEM_STYLE}
+          cursor={{ fill: '#f9fafb' }}
+        />
+        <Legend wrapperStyle={LEGEND_STYLE} iconType="circle" iconSize={8} />
+        <Bar dataKey="positive" stackId="a" fill={CHART_COLORS.positive} name="Positive" />
+        <Bar dataKey="neutral" stackId="a" fill={CHART_COLORS.neutral} name="Neutral" />
+        <Bar dataKey="negative" stackId="a" fill={CHART_COLORS.negative} name="Negative" radius={[6, 6, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )

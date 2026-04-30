@@ -110,6 +110,7 @@ export function InboxFiltersBar({ filters, onChange }: InboxFiltersProps) {
             icon={<Search size={16} />}
             value={filters.search}
             onChange={(e) => updateFilter('search', e.target.value)}
+            data-inbox-search
           />
         </div>
       </div>

@@ -3,16 +3,19 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { CheckSquare, CheckCheck, Archive, UserPlus, Loader2, Inbox, List, Columns, LayoutGrid, X, Sparkles, User, ShieldAlert, ShieldCheck, Mail, CircleCheck } from 'lucide-react'
+import { CheckSquare, CheckCheck, Archive, UserPlus, Loader2, Inbox, List, Columns, LayoutGrid, X, Sparkles, User, ShieldAlert, ShieldCheck, Mail, CircleCheck, RefreshCw, Bookmark, BookmarkPlus, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { InboxRowSkeleton } from '@/components/ui/skeleton'
 import { InboxList } from '@/components/inbox/inbox-list'
 import { InboxFiltersBar, type InboxFilters } from '@/components/inbox/inbox-filters'
 import { InboxPreview } from '@/components/inbox/inbox-preview'
 import { InboxKanban } from '@/components/inbox/inbox-kanban'
+import { SavedViewModal, getSavedViewIcon } from '@/components/inbox/saved-view-modal'
 import { createClient } from '@/lib/supabase-client'
 import { useToast } from '@/components/ui/toast'
 import { useRealtimeMessages } from '@/hooks/useRealtimeMessages'
-import type { InboxItem, Priority } from '@/types/database'
+import type { InboxItem, Priority, SavedView, SavedViewFilters } from '@/types/database'
 import { useUser } from '@/context/user-context'
 
 type ViewMode = 'list' | 'split' | 'kanban'
@@ -119,6 +122,12 @@ export default function InboxPage() {
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const [newMessageCount, setNewMessageCount] = useState(0)
   const [myConversationsOnly, setMyConversationsOnly] = useState(false)
+  // ── Snooze filter ────────────────────────────────────────────────────
+  // Default behaviour: snoozed conversations are hidden until their snooze
+  // expires (the wake-snoozed cron will null out `snoozed_until` and the row
+  // re-appears here naturally). When toggled on, snoozed rows are included
+  // and tagged with a yellow "Snoozed until …" badge in <InboxRow>.
+  const [showSnoozed, setShowSnoozed] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   type InboxView = 'inbox' | 'newsletter' | 'spam'
   const [inboxView, setInboxView] = useState<InboxView>(() => {
@@ -138,6 +147,80 @@ export default function InboxPage() {
   })
   const listTopRef = useRef<HTMLDivElement>(null)
 
+  // ── Saved views (smart inboxes) ──────────────────────────────────
+  // When ?view=ID is in the URL, fetch the matching view and apply its
+  // filter blob to the current InboxFilters state. Resolving 'me' for the
+  // assignee field happens at apply time (we have currentUserId by then).
+  const [activeView, setActiveView] = useState<SavedView | null>(null)
+  const [showSaveViewModal, setShowSaveViewModal] = useState(false)
+  const [editingView, setEditingView] = useState<SavedView | null>(null)
+  const viewParam = searchParams.get('view')
+  useEffect(() => {
+    if (!viewParam) {
+      setActiveView(null)
+      return
+    }
+    let cancelled = false
+    fetch('/api/saved-views')
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        const found = (data?.views as SavedView[] | undefined)?.find((v) => v.id === viewParam)
+        if (!found) return
+        setActiveView(found)
+        // Apply the view's filters to the current InboxFilters state. The
+        // saved-view shape is a SUPERSET of InboxFilters — fields the inbox
+        // bar doesn't render (status, assignee, age_hours_gt, account_ids,
+        // unread_only) are kept on `activeView.filters` and applied in the
+        // memoized `filteredItems` filter below.
+        const f = found.filters || {}
+        setFilters((prev) => ({
+          ...prev,
+          channel: (f.channel as InboxFilters['channel']) ?? prev.channel,
+          category: (f.category as InboxFilters['category']) ?? prev.category,
+          sentiment: (f.sentiment as InboxFilters['sentiment']) ?? prev.sentiment,
+          priority: (f.priority as InboxFilters['priority']) ?? prev.priority,
+          search: f.search ?? prev.search,
+        }))
+      })
+      .catch(() => { /* fall back to current filters */ })
+    return () => { cancelled = true }
+  }, [viewParam])
+
+  const clearActiveView = useCallback(() => {
+    setActiveView(null)
+    setFilters(defaultFilters)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      params.delete('view')
+      const qs = params.toString()
+      window.history.replaceState({}, '', qs ? `/inbox?${qs}` : '/inbox')
+    }
+  }, [])
+
+  /** Build a SavedViewFilters blob from the current InboxFilters state. */
+  const currentFiltersAsView = useCallback((): SavedViewFilters => {
+    const out: SavedViewFilters = {}
+    if (filters.channel !== 'all') out.channel = filters.channel
+    if (filters.category !== 'all') out.category = filters.category as string
+    if (filters.sentiment !== 'all') out.sentiment = filters.sentiment
+    if (filters.priority !== 'all') out.priority = filters.priority
+    if (filters.search) out.search = filters.search
+    if (myConversationsOnly) out.assignee = 'me'
+    return out
+  }, [filters, myConversationsOnly])
+
+  const hasNonDefaultFilters = useMemo(() => {
+    return (
+      filters.channel !== 'all' ||
+      filters.category !== 'all' ||
+      filters.sentiment !== 'all' ||
+      filters.priority !== 'all' ||
+      !!filters.search ||
+      myConversationsOnly
+    )
+  }, [filters, myConversationsOnly])
+
   // Get the current authenticated user's ID
   useEffect(() => {
     async function getCurrentUser() {
@@ -146,6 +229,21 @@ export default function InboxPage() {
       setCurrentUserId(user?.id ?? null)
     }
     getCurrentUser()
+  }, [])
+
+  // Listen for the global `/` keyboard shortcut and focus the search input.
+  // The input lives inside <InboxFiltersBar> and is tagged with
+  // `data-inbox-search` so we don't need to thread a ref through.
+  useEffect(() => {
+    const onFocusSearch = () => {
+      const el = document.querySelector<HTMLInputElement>('[data-inbox-search]')
+      if (el) {
+        el.focus()
+        el.select()
+      }
+    }
+    window.addEventListener('inbox:focus-search', onFocusSearch)
+    return () => window.removeEventListener('inbox:focus-search', onFocusSearch)
   }, [])
 
   const handleSelectionChange = useCallback((ids: Set<string>) => {
@@ -208,7 +306,7 @@ export default function InboxPage() {
           accounts!messages_account_id_fkey ( id, name, phase2_enabled ),
           message_classifications ( category, sentiment, urgency, confidence, classified_at ),
           ai_replies ( status, created_at ),
-          conversations!messages_conversation_id_fkey ( status, assigned_to, tags )
+          conversations!messages_conversation_id_fkey ( status, assigned_to, tags, snoozed_until )
         `)
         .eq('direction', 'inbound')
 
@@ -329,6 +427,7 @@ export default function InboxPage() {
           timestamp: msg.received_at || msg.timestamp,
           is_spam: msg.is_spam ?? false,
           spam_reason: msg.spam_reason ?? null,
+          snoozed_until: conversation?.snoozed_until ?? null,
         } satisfies InboxItem
       })
 
@@ -386,7 +485,7 @@ export default function InboxPage() {
           accounts!messages_account_id_fkey ( id, name, phase2_enabled ),
           message_classifications ( category, sentiment, urgency, confidence, classified_at ),
           ai_replies ( status, created_at ),
-          conversations!messages_conversation_id_fkey ( status, assigned_to, tags )
+          conversations!messages_conversation_id_fkey ( status, assigned_to, tags, snoozed_until )
         `)
         .eq('direction', 'inbound')
         .lt('received_at', lastItem.timestamp)
@@ -436,6 +535,7 @@ export default function InboxPage() {
             tags: conv?.tags || null,
             is_spam: msg.is_spam ?? false,
             spam_reason: msg.spam_reason ?? null,
+            snoozed_until: conv?.snoozed_until ?? null,
           }
         })
         setItems(prev => [...prev, ...mapped])
@@ -464,6 +564,48 @@ export default function InboxPage() {
     }, [fetchInboxItems]),
   })
 
+  // ── Inbox sync (fires IMAP/Graph pollers manually — Vercel Cron only runs
+  //    in production, so we need this to get new mail locally and on-demand). ──
+  const [syncing, setSyncing] = useState(false)
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null)
+  const syncStartedRef = useRef(false)
+
+  const handleSync = useCallback(async () => {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/inbox-sync', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.started) {
+        toast.info('Sync started — new messages will appear as they arrive')
+        setLastSyncAt(new Date())
+      } else if (data.reason === 'throttled') {
+        const secs = Math.ceil((data.retry_in_ms || 0) / 1000)
+        toast.warning(`Sync is throttled — try again in ${secs}s`)
+      } else if (data.reason === 'already_running') {
+        toast.info('A sync is already in progress')
+      } else {
+        toast.error(data.error || 'Sync failed to start')
+      }
+    } catch (err) {
+      toast.error('Sync failed: ' + (err instanceof Error ? err.message : 'network error'))
+    } finally {
+      setSyncing(false)
+    }
+  }, [syncing, toast])
+
+  // Auto-sync once on first mount so opening /inbox pulls fresh mail.
+  useEffect(() => {
+    if (syncStartedRef.current) return
+    syncStartedRef.current = true
+    fetch('/api/inbox-sync', { method: 'POST' })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (data?.started) setLastSyncAt(new Date())
+      })
+      .catch(() => { /* non-critical */ })
+  }, [])
+
   // Handler for the new message banner (manual refresh + scroll)
   const handleRefreshNewMessages = useCallback(() => {
     setNewMessageCount(0)
@@ -472,7 +614,16 @@ export default function InboxPage() {
   }, [fetchInboxItems])
 
   const filteredItems = useMemo(() => {
+    // Pull view-only filter fields (the ones not exposed in InboxFiltersBar).
+    // These come from the active saved view (if any) and are applied on top.
+    const viewFilters = activeView?.filters ?? {}
+    const nowMs = Date.now()
     return items.filter((item) => {
+      // Snooze filter: by default hide rows whose snoozed_until is still in
+      // the future. When the user toggles "Show snoozed" we keep them.
+      if (!showSnoozed && item.snoozed_until && new Date(item.snoozed_until).getTime() > nowMs) {
+        return false
+      }
       if (myConversationsOnly && currentUserId && item.assigned_to !== currentUserId) return false
       if (filters.channel !== 'all' && item.channel !== filters.channel) return false
       if (filters.category !== 'all' && item.category !== filters.category) return false
@@ -486,9 +637,26 @@ export default function InboxPage() {
       ) {
         return false
       }
+      // ── Saved-view-only filters ────────────────────────────────────
+      if (viewFilters.status && viewFilters.status !== 'all' && item.conversation_status !== viewFilters.status) return false
+      if (viewFilters.account_ids && viewFilters.account_ids.length > 0 && !viewFilters.account_ids.includes(item.account_id)) return false
+      if (viewFilters.assignee && viewFilters.assignee !== 'all') {
+        if (viewFilters.assignee === 'unassigned') {
+          if (item.assigned_to) return false
+        } else if (viewFilters.assignee === 'me') {
+          if (!currentUserId || item.assigned_to !== currentUserId) return false
+        } else {
+          // Specific user_id
+          if (item.assigned_to !== viewFilters.assignee) return false
+        }
+      }
+      if (viewFilters.age_hours_gt && viewFilters.age_hours_gt > 0) {
+        const ageHours = (nowMs - new Date(item.timestamp).getTime()) / 36e5
+        if (ageHours < viewFilters.age_hours_gt) return false
+      }
       return true
     })
-  }, [items, filters, myConversationsOnly, currentUserId])
+  }, [items, filters, myConversationsOnly, currentUserId, activeView, showSnoozed])
 
   // ─── Bulk-action handlers ────────────────────────────────────────────
   // Each handler runs one bulk operation. Where applicable we use .select()
@@ -840,6 +1008,46 @@ export default function InboxPage() {
         </button>
       </div>
 
+      {/* Active saved-view chip + quick "Save as view" CTA */}
+      {inboxView === 'inbox' && (activeView || (hasNonDefaultFilters && !viewParam)) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {activeView && (() => {
+            const SVIcon = getSavedViewIcon(activeView.icon)
+            return (
+              <span className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-medium text-teal-800">
+                <SVIcon className="h-3.5 w-3.5" />
+                Viewing: {activeView.name}
+                <button
+                  onClick={clearActiveView}
+                  className="ml-1 rounded-full p-0.5 text-teal-600 hover:bg-teal-100 hover:text-teal-900 transition-colors"
+                  title="Clear view"
+                  aria-label="Clear active saved view"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => { setEditingView(activeView); setShowSaveViewModal(true) }}
+                  className="rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-teal-700 hover:bg-teal-100 transition-colors"
+                  title="Edit view"
+                >
+                  Edit
+                </button>
+              </span>
+            )
+          })()}
+          {!activeView && hasNonDefaultFilters && (
+            <button
+              onClick={() => { setEditingView(null); setShowSaveViewModal(true) }}
+              className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm font-medium text-gray-700 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 transition-colors"
+              title="Save current filters as a saved view"
+            >
+              <BookmarkPlus className="h-3.5 w-3.5" />
+              Save as view
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Filters */}
       {inboxView === 'inbox' && (
       <div className="flex items-center gap-3">
@@ -856,6 +1064,26 @@ export default function InboxPage() {
         >
           <User size={14} />
           My Conversations
+        </button>
+        <button
+          onClick={() => setShowSnoozed((v) => !v)}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
+            showSnoozed
+              ? 'bg-amber-500 text-white shadow-sm'
+              : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-amber-300 hover:text-amber-700'
+          }`}
+          title={showSnoozed ? 'Hide snoozed conversations' : 'Show snoozed conversations alongside your inbox'}
+        >
+          <Clock size={14} />
+          {showSnoozed ? 'Hide snoozed' : 'Show snoozed'}
+        </button>
+        <button
+          onClick={() => { setEditingView(null); setShowSaveViewModal(true) }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 transition-colors whitespace-nowrap"
+          title="Save current filters as a view"
+        >
+          <Bookmark size={14} />
+          <span className="hidden sm:inline">Save view</span>
         </button>
       </div>
       )}
@@ -911,6 +1139,17 @@ export default function InboxPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Sync — manually fire IMAP/Graph pollers. Shows last sync time. */}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSync}
+            disabled={syncing}
+            title={lastSyncAt ? `Last synced ${lastSyncAt.toLocaleTimeString()}` : 'Sync now'}
+          >
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : 'Sync'}
+          </Button>
           {/* Smart Approve: only messages with AI confidence > 85% */}
           <Button
             variant="secondary"
@@ -1139,11 +1378,12 @@ export default function InboxPage() {
         </div>
       )}
 
-      {/* Loading state */}
+      {/* Loading state — skeleton rows matching the inbox list shape */}
       {loading && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-white py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-          <p className="mt-3 text-sm text-gray-500">Loading messages...</p>
+        <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <InboxRowSkeleton key={i} />
+          ))}
         </div>
       )}
 
@@ -1165,45 +1405,44 @@ export default function InboxPage() {
 
       {/* Empty state */}
       {!loading && !error && items.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-white py-16">
+        <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
           {inboxView === 'spam' ? (
-            <>
-              <ShieldCheck className="h-10 w-10 text-green-300" />
-              <p className="mt-3 text-sm font-medium text-gray-700">No spam messages</p>
-              <p className="mt-1 text-xs text-gray-500">
-                Your inbox is clean -- no messages have been flagged as spam.
-              </p>
-            </>
+            <EmptyState
+              icon={ShieldCheck}
+              title="No spam messages"
+              description="Your inbox is clean — no messages have been flagged as spam."
+            />
           ) : inboxView === 'newsletter' ? (
-            <>
-              <Mail className="h-10 w-10 text-amber-300" />
-              <p className="mt-3 text-sm font-medium text-gray-700">No newsletters</p>
-              <p className="mt-1 text-xs text-gray-500">
-                No newsletters or marketing emails have been received.
-              </p>
-            </>
+            <EmptyState
+              icon={Mail}
+              title="No newsletters"
+              description="No newsletters or marketing emails have been received."
+            />
           ) : (
-            <>
-              <Inbox className="h-10 w-10 text-gray-300" />
-              <p className="mt-3 text-sm font-medium text-gray-700">All caught up!</p>
-              <p className="mt-1 text-xs text-gray-500">
-                Messages will appear here once your channels start receiving them.
-              </p>
-            </>
+            <EmptyState
+              icon={Inbox}
+              title="All caught up!"
+              description="Messages will appear here once your channels start receiving them."
+              action={
+                <Button variant="primary" onClick={handleSync} loading={syncing}>
+                  <RefreshCw className="h-4 w-4" />
+                  Sync
+                </Button>
+              }
+              hint="Tip: click Sync to pull new mail from your connected accounts."
+            />
           )}
         </div>
       )}
 
       {/* Filtered empty state */}
       {!loading && !error && items.length > 0 && filteredItems.length === 0 && inboxView === 'inbox' && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-white py-16">
-          <Inbox className="h-10 w-10 text-gray-300" />
-          <p className="mt-3 text-sm font-medium text-gray-700">
-            No messages match your filters
-          </p>
-          <p className="mt-1 text-xs text-gray-500">
-            Try adjusting your filters or check back later
-          </p>
+        <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+          <EmptyState
+            icon={Inbox}
+            title="No messages match your filters"
+            description="Try adjusting your filters or check back later."
+          />
         </div>
       )}
 
@@ -1341,6 +1580,24 @@ export default function InboxPage() {
           </Button>
         </div>
       )}
+
+      {/* Save view modal — opens for create OR edit (when editingView set) */}
+      <SavedViewModal
+        open={showSaveViewModal}
+        onClose={() => { setShowSaveViewModal(false); setEditingView(null) }}
+        view={editingView}
+        initialFilters={editingView ? undefined : currentFiltersAsView()}
+        onSaved={(saved) => {
+          // Notify the sidebar to refresh its list.
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('saved-views:changed'))
+          }
+          // If we just edited the active view, update it in place.
+          if (activeView && saved.id === activeView.id) {
+            setActiveView(saved)
+          }
+        }}
+      />
     </div>
   )
 }

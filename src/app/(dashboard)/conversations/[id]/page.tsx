@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Crown, User } from 'lucide-react'
 import { ChannelIcon } from '@/components/ui/channel-icon'
 import { ConversationThread } from '@/components/dashboard/conversation-thread'
 import { ScrollToBottom } from '@/components/dashboard/scroll-to-bottom'
@@ -8,11 +8,14 @@ import { MarkRead } from '@/components/dashboard/mark-read'
 import { ConversationRealtime } from '@/components/dashboard/conversation-realtime'
 import { AISidebar } from '@/components/dashboard/ai-sidebar'
 import { ConversationActions } from '@/components/dashboard/conversation-actions'
+import { ScheduledMessagesList } from '@/components/dashboard/scheduled-messages-list'
 import { SuggestedReplies } from '@/components/dashboard/suggested-replies'
 import { BookmarkButton } from '@/components/dashboard/conversation-bookmarks'
 import { StatusDropdown } from '@/components/dashboard/status-dropdown'
 import { AgentAssignment } from '@/components/dashboard/agent-assignment'
 import { InternalNotes } from '@/components/dashboard/internal-notes'
+import { SnoozeButton } from '@/components/dashboard/snooze-button'
+import { PresenceBar } from '@/components/dashboard/presence-bar'
 import {
   cn,
   getChannelLabel,
@@ -47,6 +50,7 @@ export default async function ConversationPage({
   let userAccountId: string | null = null
   let userIsAdmin = false
   let currentUserName: string | null = null
+  const currentUserId: string | null = authUser?.id ?? null
   if (authUser) {
     const { data: profile } = await supabase
       .from('users')
@@ -75,6 +79,9 @@ export default async function ConversationPage({
       tags,
       first_message_at,
       last_message_at,
+      contact_id,
+      snoozed_until,
+      snoozed_by,
       accounts!conversations_account_id_fkey ( id, name, phase1_enabled, phase2_enabled ),
       users!conversations_assigned_to_fkey ( id, full_name, email )
     `)
@@ -230,6 +237,33 @@ export default async function ConversationPage({
     totalConversations = count || 1
   }
 
+  // ─── Unified contact profile chip ───────────────────────────────────
+  // If this conversation has been linked to a contact (backfilled or set
+  // by findOrCreateConversation on creation), surface a header chip and
+  // a count of OTHER currently-open conversations across other accounts.
+  let contactProfile: { id: string; is_vip: boolean } | null = null
+  let otherOpenCount = 0
+  const linkedContactId = (conversation as { contact_id?: string | null }).contact_id ?? null
+  if (linkedContactId) {
+    const { data: c } = await supabase
+      .from('contacts')
+      .select('id, is_vip')
+      .eq('id', linkedContactId)
+      .maybeSingle()
+    contactProfile = (c ?? null) as { id: string; is_vip: boolean } | null
+
+    if (contactProfile) {
+      const { count } = await supabase
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('contact_id', linkedContactId)
+        .neq('id', id)
+        .neq('account_id', conversation.account_id)
+        .in('status', ['active', 'in_progress', 'escalated', 'waiting_on_customer'])
+      otherOpenCount = count || 0
+    }
+  }
+
   // Conversation timer
   const firstMsgAt = conversation.first_message_at as string | null
   const lastMsgAt = conversation.last_message_at as string | null
@@ -263,6 +297,15 @@ export default async function ConversationPage({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="font-semibold text-gray-900 text-lg truncate max-w-[240px] sm:max-w-[360px]">{participantName}</h1>
+              {contactProfile?.is_vip && (
+                <span
+                  title="Marked as VIP in unified contact profile"
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+                >
+                  <Crown className="h-2.5 w-2.5" />
+                  VIP
+                </span>
+              )}
               <BookmarkButton conversationId={id} participantName={participantName} accountName={accountName} />
               {channel === 'teams' && conversation.teams_chat_id && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
@@ -279,6 +322,17 @@ export default async function ConversationPage({
               )}
             </div>
           </div>
+          {/* Live "who else is here" stack — only renders when others are present */}
+          {currentUserId && (
+            <PresenceBar
+              conversationId={id}
+              currentUser={{
+                user_id: currentUserId,
+                display_name: currentUserName || 'You',
+                avatar_url: null,
+              }}
+            />
+          )}
           {/* Status & priority badges */}
           <div className="flex items-center gap-2 shrink-0">
             <StatusDropdown
@@ -291,6 +345,10 @@ export default async function ConversationPage({
             )}>
               {priority}
             </span>
+            <SnoozeButton
+              conversationId={id}
+              snoozedUntil={(conversation as { snoozed_until?: string | null }).snoozed_until ?? null}
+            />
             <AgentAssignment
               conversationId={id}
               currentAssignedTo={conversation.assigned_to || null}
@@ -305,6 +363,26 @@ export default async function ConversationPage({
           <span>&middot; {messageCount} msgs ({inboundCount} inbound)</span>
           {totalConversations > 1 && (
             <span>&middot; {totalConversations} conversations</span>
+          )}
+          {contactProfile && (
+            <>
+              <span className="text-gray-300">&middot;</span>
+              <Link
+                href={`/contacts/${contactProfile.id}`}
+                className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-100 px-2 py-0.5 text-[10px] font-semibold text-teal-700 hover:bg-teal-100 transition-colors"
+              >
+                <User className="h-2.5 w-2.5" />
+                View contact profile →
+              </Link>
+              {otherOpenCount > 0 && (
+                <Link
+                  href={`/contacts/${contactProfile.id}`}
+                  className="text-teal-700 hover:underline"
+                >
+                  {otherOpenCount} other open
+                </Link>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -347,6 +425,11 @@ export default async function ConversationPage({
             category={classification?.category || null}
           />
 
+          {/* Scheduled messages for this conversation (self-hides when empty) */}
+          <div className="shrink-0 px-4 sm:px-6 pb-3">
+            <ScheduledMessagesList conversationId={id} />
+          </div>
+
           {/* Bottom action bar */}
           <div className="shrink-0 border-t border-gray-200 bg-white px-4 sm:px-6 py-4">
             <ConversationActions
@@ -362,6 +445,8 @@ export default async function ConversationPage({
               emailSubject={emailSubject}
               teamsChatId={conversation.teams_chat_id || null}
               conversationStatus={status}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
             />
           </div>
         </div>
@@ -375,6 +460,7 @@ export default async function ConversationPage({
             sentimentHistory={sentimentHistory}
             customerHistory={customerHistory}
             channel={channel}
+            conversationId={id}
             teamsContext={channel === 'teams' ? {
               chatType: conversation.teams_chat_id?.includes('uni01_') ? '1:1' : 'group',
               accountName: accountName.replace(/\s+Teams$/i, '').replace(/\s+WhatsApp$/i, '').trim(),
