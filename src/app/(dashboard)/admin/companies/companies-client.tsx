@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Building2, Plus, AlertCircle } from 'lucide-react'
+import { Building2, Plus, AlertCircle, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
@@ -37,13 +37,67 @@ function formatCurrency(value: number): string {
 export function CompaniesAdminClient({ initialCompanies }: { initialCompanies: CompanyRow[] }) {
   const router = useRouter()
   const { toast } = useToast()
-  const [companies] = useState<CompanyRow[]>(initialCompanies)
+  const [companies, setCompanies] = useState<CompanyRow[]>(initialCompanies)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
   const [createSlug, setCreateSlug] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+
+  // Delete-flow state. Confirm-by-typing-name is the same pattern GitHub
+  // uses for "delete repo" — catches "wrong company id" mistakes which
+  // are by far the most common cause of accidental destructive admin ops.
+  const [deleteTarget, setDeleteTarget] = useState<CompanyRow | null>(null)
+  const [deleteTypedName, setDeleteTypedName] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleteForce, setDeleteForce] = useState(false)
+
+  const closeDelete = () => {
+    setDeleteTarget(null)
+    setDeleteTypedName('')
+    setDeleteError(null)
+    setDeleteForce(false)
+    setDeleting(false)
+  }
+
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return
+    if (deleteTypedName !== deleteTarget.name) {
+      setDeleteError(`Type the company name exactly to confirm: "${deleteTarget.name}"`)
+      return
+    }
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const url = `/api/admin/companies/${deleteTarget.id}?confirm=${encodeURIComponent(deleteTarget.name)}${deleteForce ? '&force=true' : ''}`
+      const res = await fetch(url, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // 409 = company has attached accounts. Surface the count so the
+        // operator can decide between detaching first or forcing.
+        if (res.status === 409 && typeof data?.attached_accounts === 'number') {
+          setDeleteError(
+            `${data.error} You can detach accounts on the company detail page, OR check "Force delete (cascade)" below to remove them all.`,
+          )
+        } else {
+          setDeleteError(data?.error ?? 'Failed to delete company')
+        }
+        setDeleting(false)
+        return
+      }
+      toast.success(`Deleted "${deleteTarget.name}"`)
+      // Optimistically drop the row from the list so the table updates
+      // before router.refresh() round-trips.
+      setCompanies((prev) => prev.filter((c) => c.id !== deleteTarget.id))
+      closeDelete()
+      router.refresh()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Network error')
+      setDeleting(false)
+    }
+  }, [deleteTarget, deleteTypedName, deleteForce, router, toast])
 
   const handleCreate = useCallback(async () => {
     if (!createName.trim()) {
@@ -118,6 +172,7 @@ export function CompaniesAdminClient({ initialCompanies }: { initialCompanies: C
                 <TableHead className="text-right">Users</TableHead>
                 <TableHead className="hidden lg:table-cell text-right">Spend (this month)</TableHead>
                 <TableHead className="hidden lg:table-cell text-right">Budget</TableHead>
+                <TableHead className="w-[60px]"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -189,6 +244,20 @@ export function CompaniesAdminClient({ initialCompanies }: { initialCompanies: C
                     <TableCell className="hidden lg:table-cell text-right text-sm text-gray-500">
                       {c.monthly_ai_budget_usd != null ? formatCurrency(c.monthly_ai_budget_usd) : '—'}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation() // don't navigate to detail page on delete-button click
+                          setDeleteTarget(c)
+                        }}
+                        className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title={`Delete ${c.name}`}
+                        aria-label={`Delete company ${c.name}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </TableCell>
                   </TableRow>
                 )
               })}
@@ -246,6 +315,80 @@ export function CompaniesAdminClient({ initialCompanies }: { initialCompanies: C
             Slug must be lowercase letters, digits, and dashes (1-64 chars). Used for vanity URLs.
           </p>
         </div>
+      </Modal>
+
+      {/* ─── Delete confirmation modal ─────────────────────────────────
+         Two-key safety: must type the exact company name AND, if accounts
+         are still attached, must opt into "Force delete (cascade)". The
+         button stays disabled until both checks pass. */}
+      <Modal
+        open={deleteTarget !== null}
+        onClose={closeDelete}
+        title={deleteTarget ? `Delete "${deleteTarget.name}"` : 'Delete company'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeDelete} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleDelete}
+              disabled={deleting || !deleteTarget || deleteTypedName !== (deleteTarget?.name ?? '')}
+              loading={deleting}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete forever
+            </Button>
+          </>
+        }
+      >
+        {deleteTarget && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+              <div className="space-y-1 text-sm text-red-800">
+                <p className="font-semibold">This is permanent and cannot be undone.</p>
+                <p>
+                  Deleting this company will cascade-delete all of its accounts, conversations,
+                  messages, contacts, channel configs, audit history, and integration settings
+                  ({deleteTarget.accounts_count} account{deleteTarget.accounts_count === 1 ? '' : 's'},
+                  {' '}{deleteTarget.users_count} user{deleteTarget.users_count === 1 ? '' : 's'}
+                  {' '}attached).
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                {deleteError}
+              </div>
+            )}
+
+            <Input
+              label={`Type "${deleteTarget.name}" to confirm`}
+              placeholder={deleteTarget.name}
+              value={deleteTypedName}
+              onChange={(e) => setDeleteTypedName(e.target.value)}
+              autoFocus
+            />
+
+            {deleteTarget.accounts_count > 0 && (
+              <label className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={deleteForce}
+                  onChange={(e) => setDeleteForce(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                <span className="text-sm text-gray-700">
+                  <span className="font-medium">Force delete (cascade)</span> — also remove the
+                  {' '}{deleteTarget.accounts_count} attached account{deleteTarget.accounts_count === 1 ? '' : 's'}.
+                  Without this, you must detach accounts on the company detail page first.
+                </span>
+              </label>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   )

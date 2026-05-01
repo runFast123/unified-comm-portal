@@ -240,3 +240,120 @@ export async function PATCH(
 
   return NextResponse.json({ company: updated })
 }
+
+/**
+ * DELETE /api/admin/companies/:id — super_admin ONLY.
+ *
+ * This is destructive: dropping a company cascades through accounts,
+ * conversations, messages, contacts, etc., via the FK ON DELETE CASCADE
+ * chain. To prevent accidents we require:
+ *   1. Caller is super_admin (NOT just company_admin of the target).
+ *   2. ?confirm=<company-name> query param matches the company's actual
+ *      name. This is the same pattern GitHub uses for "delete repo".
+ *
+ * Safety guards (refuse delete unless explicitly forced):
+ *   - If the company has any accounts, return 409 with a list — caller
+ *     must detach them first via /accounts/[id]/detach. Add ?force=true
+ *     to override (super_admin can still bypass when needed).
+ *
+ * Audit row written before the delete so the record survives the cascade.
+ */
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params
+  const url = new URL(request.url)
+  const confirmName = url.searchParams.get('confirm')
+  const force = url.searchParams.get('force') === 'true'
+
+  // Auth: super_admin only — even company_admin of the target can't delete
+  // their own company (would lock themselves out). Force them to ask
+  // platform staff.
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const profile = await getCurrentUser(user.id)
+  if (!profile || !isSuperAdmin(profile.role)) {
+    return NextResponse.json(
+      { error: 'Only super_admin can delete companies' },
+      { status: 403 },
+    )
+  }
+
+  const admin = await createServiceRoleClient()
+
+  // Look up the company first so we can:
+  //   (a) verify it exists,
+  //   (b) compare confirm-by-name token,
+  //   (c) include the name in the audit log even after the row is gone.
+  const { data: company, error: lookupErr } = await admin
+    .from('companies')
+    .select('id, name')
+    .eq('id', id)
+    .maybeSingle()
+  if (lookupErr) {
+    return NextResponse.json({ error: lookupErr.message }, { status: 500 })
+  }
+  if (!company) {
+    return NextResponse.json({ error: 'Company not found' }, { status: 404 })
+  }
+
+  // Confirm-by-name guard. The frontend must echo the actual company name
+  // back as ?confirm=<name>. Catches "wrong company id" mistakes — the
+  // most common cause of accidental destructive admin operations.
+  if (confirmName == null || confirmName !== company.name) {
+    return NextResponse.json(
+      {
+        error: `Confirmation mismatch — pass ?confirm=<company name> matching "${company.name}"`,
+      },
+      { status: 400 },
+    )
+  }
+
+  // Safety: refuse if accounts are still attached, unless force=true.
+  // Keeping the explicit detach step in normal flows means the operator
+  // sees what they're nuking before they do it.
+  const { count: attachedAccounts } = await admin
+    .from('accounts')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', id)
+
+  if ((attachedAccounts ?? 0) > 0 && !force) {
+    return NextResponse.json(
+      {
+        error: `Company has ${attachedAccounts} attached account(s). Detach them first or pass ?force=true to cascade delete.`,
+        attached_accounts: attachedAccounts,
+      },
+      { status: 409 },
+    )
+  }
+
+  // Audit BEFORE the delete — once the company is gone the FK on the
+  // user (gate.userId) still resolves but the entity_id no longer points
+  // to a row, so we keep the snapshot in `details`.
+  try {
+    await admin.from('audit_log').insert({
+      user_id: user.id,
+      action: 'company.delete',
+      entity_type: 'company',
+      entity_id: id,
+      details: {
+        deleted_company_name: company.name,
+        attached_accounts_at_delete: attachedAccounts ?? 0,
+        force,
+      },
+    })
+  } catch { /* non-fatal — don't block delete on audit write */ }
+
+  const { error: deleteErr } = await admin
+    .from('companies')
+    .delete()
+    .eq('id', id)
+  if (deleteErr) {
+    return NextResponse.json({ error: deleteErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, deleted: { id, name: company.name } })
+}
