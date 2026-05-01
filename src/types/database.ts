@@ -104,6 +104,15 @@ export interface Account {
   // (`ai_budget.threshold_crossed`) is emitted. See `src/lib/ai-usage.ts`.
   monthly_ai_budget_usd: number
   ai_budget_alert_at_pct: number
+  // Per-account out-of-office auto-reply config. When `ooo_enabled` is true
+  // and `now` is within `[ooo_starts_at, ooo_ends_at]` (either bound may be
+  // null for an open-ended window), the inbound pipeline auto-replies once
+  // per conversation per window. See `src/lib/ooo.ts`.
+  ooo_enabled?: boolean
+  ooo_starts_at?: string | null
+  ooo_ends_at?: string | null
+  ooo_subject?: string | null
+  ooo_body?: string | null
   created_at: string
   updated_at: string
 }
@@ -147,6 +156,14 @@ export interface Conversation {
   snoozed_until: string | null
   /** User who put it on snooze (FK users.id). NULL when not snoozed. */
   snoozed_by: string | null
+  /** When this conversation has been folded into another (soft merge), points at
+   *  the primary. NULL on the primary side. Inbox/list queries filter on this
+   *  to hide merged secondaries; the row itself is preserved for audit. */
+  merged_into_id: string | null
+  /** ISO timestamp the merge happened. NULL when not merged. */
+  merged_at: string | null
+  /** User who performed the merge (FK users.id). NULL when not merged. */
+  merged_by: string | null
   // Joined data
   account?: Account
   messages?: Message[]

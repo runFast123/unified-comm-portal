@@ -9,6 +9,8 @@ import {
 } from '@/lib/api-helpers'
 import { evaluateRouting, applyRoutingResult } from '@/lib/routing-engine'
 import { getRequestId, REQUEST_ID_HEADER } from '@/lib/request-id'
+import { isAccountOOO, shouldSendOOOReply, recordOOOReply, substituteOOOVariables } from '@/lib/ooo'
+import { sendTeams } from '@/lib/channel-sender'
 
 export async function POST(request: Request) {
   const requestId = await getRequestId()
@@ -78,7 +80,7 @@ export async function POST(request: Request) {
     // Verify account exists and is active
     const { data: accountRow, error: accountError } = await supabase
       .from('accounts')
-      .select('id, name, is_active')
+      .select('id, name, company_id, is_active, ooo_enabled, ooo_starts_at, ooo_ends_at, ooo_subject, ooo_body')
       .eq('id', account_id)
       .single()
 
@@ -251,6 +253,64 @@ export async function POST(request: Request) {
       }).catch(err => console.error('Notification trigger failed:', err))
     } catch (notifErr) {
       console.error('Failed to load notification service:', notifErr)
+    }
+
+    // ── Out-of-office auto-reply ────────────────────────────────────
+    // Mirrors the email-ingest hook. Fires at most once per conversation
+    // per OOO window; only for inbound (customer) messages — agent messages
+    // already short-circuited above. Send is fire-and-forget via after()
+    // so the webhook stays fast.
+    if (isAccountOOO(accountRow) && teams_chat_id) {
+      const windowStart = accountRow.ooo_starts_at ?? null
+      const isFirst = await shouldSendOOOReply(supabase, account_id, conversationId, windowStart)
+      if (isFirst) {
+        let companyName: string | null = null
+        if (accountRow.company_id) {
+          const { data: companyRow } = await supabase
+            .from('companies')
+            .select('name')
+            .eq('id', accountRow.company_id)
+            .maybeSingle()
+          companyName = companyRow?.name ?? null
+        }
+        const bodyText = substituteOOOVariables(accountRow.ooo_body || '', {
+          customer: { name: sender_name, email: sender_email },
+          company: { name: companyName },
+          ooo: { ends_at: accountRow.ooo_ends_at },
+        })
+        const reserved = await recordOOOReply(supabase, account_id, conversationId, windowStart)
+        if (reserved) {
+          after(async () => {
+            try {
+              const result = await sendTeams({
+                accountId: account_id,
+                chatId: teams_chat_id,
+                body: bodyText || 'I am currently out of office and will respond when I return.',
+              })
+              if (!result.ok) {
+                logError('webhook', 'ooo_reply_send_failed', result.error, {
+                  request_id: requestId,
+                  account_id,
+                  conversation_id: conversationId,
+                })
+              } else {
+                logInfo('webhook', 'ooo_reply_sent', `OOO auto-reply sent to chat ${teams_chat_id}`, {
+                  request_id: requestId,
+                  account_id,
+                  conversation_id: conversationId,
+                  provider_message_id: result.provider_message_id,
+                })
+              }
+            } catch (sendErr) {
+              logError('webhook', 'ooo_reply_send_failed', sendErr instanceof Error ? sendErr.message : 'unknown', {
+                request_id: requestId,
+                account_id,
+                conversation_id: conversationId,
+              })
+            }
+          })
+        }
+      }
     }
 
     // Get account settings for phase flags

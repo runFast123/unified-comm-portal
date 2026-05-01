@@ -15,8 +15,11 @@ import { StatusDropdown } from '@/components/dashboard/status-dropdown'
 import { ConversationTagPicker } from '@/components/dashboard/conversation-tag-picker'
 import { AgentAssignment } from '@/components/dashboard/agent-assignment'
 import { InternalNotes } from '@/components/dashboard/internal-notes'
+import { ActivityTimeline } from '@/components/dashboard/activity-timeline'
 import { SnoozeButton } from '@/components/dashboard/snooze-button'
 import { PresenceBar } from '@/components/dashboard/presence-bar'
+import { MergeButton } from '@/components/dashboard/merge-button'
+import { MergeBanner, type MergedSecondary } from '@/components/dashboard/merge-banner'
 import {
   cn,
   getChannelLabel,
@@ -86,6 +89,9 @@ export default async function ConversationPage({
       contact_id,
       snoozed_until,
       snoozed_by,
+      merged_into_id,
+      merged_at,
+      merged_by,
       accounts!conversations_account_id_fkey ( id, name, phase1_enabled, phase2_enabled ),
       users!conversations_assigned_to_fkey ( id, full_name, email )
     `)
@@ -267,6 +273,65 @@ export default async function ConversationPage({
     }
   }
 
+  // ─── Merged secondaries (this conversation as the primary) ──────────
+  // Fetch any conversations that have been merged INTO this one so the header
+  // can show a banner + an Unmerge action per row. Cheap query — bounded set.
+  const mergedIntoId = (conversation as { merged_into_id?: string | null }).merged_into_id ?? null
+  let mergedSecondaries: MergedSecondary[] = []
+  if (!mergedIntoId) {
+    const { data: secondaries } = await supabase
+      .from('conversations')
+      .select('id, channel, participant_name, participant_email, merged_at, merged_by')
+      .eq('merged_into_id', id)
+      .order('merged_at', { ascending: false })
+
+    if (secondaries && secondaries.length > 0) {
+      const secondaryIds = secondaries.map((s: { id: string }) => s.id)
+      // Pull message counts (now ZERO for the secondaries since their messages
+      // were re-pointed; we want the count that USED to live on each row, which
+      // we capture from the audit table).
+      const adminClient = await createServiceRoleClient()
+      const { data: auditRows } = await adminClient
+        .from('conversation_merges')
+        .select('secondary_conversation_id, message_ids')
+        .eq('primary_conversation_id', id)
+        .is('unmerged_at', null)
+      const movedCount = new Map<string, number>()
+      for (const a of auditRows ?? []) {
+        const row = a as { secondary_conversation_id: string; message_ids: string[] | null }
+        movedCount.set(row.secondary_conversation_id, row.message_ids?.length ?? 0)
+      }
+
+      // Resolve the merger's display name in one round-trip.
+      const userIds = Array.from(
+        new Set(secondaries.map((s: { merged_by: string | null }) => s.merged_by).filter(Boolean) as string[])
+      )
+      const userNameById = new Map<string, string>()
+      if (userIds.length > 0) {
+        const { data: users } = await adminClient
+          .from('users')
+          .select('id, full_name, email')
+          .in('id', userIds)
+        for (const u of users ?? []) {
+          const row = u as { id: string; full_name: string | null; email: string | null }
+          userNameById.set(row.id, row.full_name || row.email || 'Unknown')
+        }
+      }
+
+      mergedSecondaries = secondaries.map((s: any) => ({
+        id: s.id,
+        participant_name: s.participant_name ?? null,
+        participant_email: s.participant_email ?? null,
+        channel: s.channel,
+        message_count: movedCount.get(s.id) ?? 0,
+        merged_at: s.merged_at ?? null,
+        merged_by_name: s.merged_by ? userNameById.get(s.merged_by) ?? null : null,
+      }))
+      // Suppress unused-var warning when secondaryIds isn't read elsewhere.
+      void secondaryIds
+    }
+  }
+
   // Conversation timer
   const firstMsgAt = conversation.first_message_at as string | null
   const lastMsgAt = conversation.last_message_at as string | null
@@ -354,6 +419,7 @@ export default async function ConversationPage({
               conversationId={id}
               snoozedUntil={(conversation as { snoozed_until?: string | null }).snoozed_until ?? null}
             />
+            {!mergedIntoId && <MergeButton conversationId={id} />}
             <AgentAssignment
               conversationId={id}
               currentAssignedTo={conversation.assigned_to || null}
@@ -394,6 +460,14 @@ export default async function ConversationPage({
 
       <MarkRead conversationId={id} />
       <ConversationRealtime conversationId={id} />
+
+      {/* Merge banner: either "this is a secondary, go to primary" OR
+          "this primary has merged-in secondaries (with Unmerge buttons)" */}
+      <MergeBanner
+        mergedIntoId={mergedIntoId}
+        mergedSecondaries={mergedSecondaries}
+        primaryConversationId={id}
+      />
 
       {/* Follow-up reminder for conversations waiting >48h */}
       {status === 'waiting_on_customer' && lastMsgAt && lastReplyMs > 48 * 60 * 60 * 1000 && (
@@ -478,6 +552,7 @@ export default async function ConversationPage({
             initialTags={(conversation.tags as string[] | null) ?? []}
           />
           <InternalNotes conversationId={id} authorName={currentUserName || undefined} />
+          <ActivityTimeline conversationId={id} />
         </div>
       </div>
     </div>

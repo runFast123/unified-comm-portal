@@ -306,7 +306,7 @@ export default function InboxPage() {
           accounts!messages_account_id_fkey ( id, name, phase2_enabled ),
           message_classifications ( category, sentiment, urgency, confidence, classified_at ),
           ai_replies ( status, created_at ),
-          conversations!messages_conversation_id_fkey ( status, assigned_to, tags, snoozed_until )
+          conversations!messages_conversation_id_fkey ( status, assigned_to, tags, snoozed_until, merged_into_id )
         `)
         .eq('direction', 'inbound')
 
@@ -384,7 +384,14 @@ export default function InboxPage() {
         return
       }
 
-      const mapped: InboxItem[] = data.map((msg: any) => {
+      // Drop messages whose conversation has been merged into another (soft
+      // merge — the secondary stays for audit but should not surface here).
+      const visibleMessages = data.filter((msg: any) => {
+        const conv = msg.conversations as { merged_into_id?: string | null } | null
+        return !conv?.merged_into_id
+      })
+
+      const mapped: InboxItem[] = visibleMessages.map((msg: any) => {
         // accounts comes back as an object (single FK relationship)
         const account = msg.accounts as any
         // message_classifications is a one-to-many — pick the latest by classified_at
@@ -485,7 +492,7 @@ export default function InboxPage() {
           accounts!messages_account_id_fkey ( id, name, phase2_enabled ),
           message_classifications ( category, sentiment, urgency, confidence, classified_at ),
           ai_replies ( status, created_at ),
-          conversations!messages_conversation_id_fkey ( status, assigned_to, tags, snoozed_until )
+          conversations!messages_conversation_id_fkey ( status, assigned_to, tags, snoozed_until, merged_into_id )
         `)
         .eq('direction', 'inbound')
         .lt('received_at', lastItem.timestamp)
@@ -502,7 +509,11 @@ export default function InboxPage() {
       const { data: moreMessages } = await moreQuery
 
       if (moreMessages && moreMessages.length > 0) {
-        const mapped: InboxItem[] = moreMessages.map((msg: any) => {
+        const visibleMore = moreMessages.filter((msg: any) => {
+          const conv = msg.conversations as { merged_into_id?: string | null } | null
+          return !conv?.merged_into_id
+        })
+        const mapped: InboxItem[] = visibleMore.map((msg: any) => {
           const account = msg.accounts as any
           const classification = Array.isArray(msg.message_classifications)
             ? [...msg.message_classifications].sort((a: any, b: any) => new Date(b.classified_at || 0).getTime() - new Date(a.classified_at || 0).getTime())[0] ?? null

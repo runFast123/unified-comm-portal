@@ -6,6 +6,8 @@ import { ChevronDown, Loader2, UserCircle, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase-client'
 import { useToast } from '@/components/ui/toast'
+// createClient still used to fetch the agent list — only the assignment write
+// moved to the API route (so audit_log captures it for the timeline).
 
 interface AgentUser {
   id: string
@@ -85,12 +87,17 @@ export function AgentAssignment({
     setLoading(true)
     setOpen(false)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('conversations')
-        .update({ assigned_to: userId })
-        .eq('id', conversationId)
-      if (error) throw error
+      // Hits the dedicated API route (not direct supabase) so the change is
+      // captured in audit_log → surfaces on the conversation activity timeline.
+      const res = await fetch(`/api/conversations/${conversationId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(payload.error || `Request failed (${res.status})`)
+      }
 
       setAssignedTo(userId)
       if (userId) {

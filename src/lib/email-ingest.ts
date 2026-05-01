@@ -19,6 +19,8 @@ import { findOrCreateConversation, getAccountSettings, stripHtml, checkRateLimit
 import { detectSpam } from '@/lib/spam-detection'
 import { evaluateRouting, applyRoutingResult } from '@/lib/routing-engine'
 import { REQUEST_ID_HEADER } from '@/lib/request-id'
+import { isAccountOOO, shouldSendOOOReply, recordOOOReply, substituteOOOVariables } from '@/lib/ooo'
+import { sendEmail } from '@/lib/channel-sender'
 
 export interface InboundEmailPayload {
   account_id: string
@@ -95,7 +97,7 @@ export async function ingestInboundEmail(
   // ── Account exists + active ─────────────────────────────────────
   const { data: accountRow, error: accountError } = await supabase
     .from('accounts')
-    .select('id, name, is_active, spam_detection_enabled, spam_allowlist')
+    .select('id, name, company_id, is_active, spam_detection_enabled, spam_allowlist, ooo_enabled, ooo_starts_at, ooo_ends_at, ooo_subject, ooo_body')
     .eq('id', account_id)
     .single()
 
@@ -225,6 +227,79 @@ export async function ingestInboundEmail(
       }).catch((err) => console.error('Notification trigger failed:', err))
     } catch (notifErr) {
       console.error('Failed to load notification service:', notifErr)
+    }
+  }
+
+  // ── Out-of-office auto-reply ────────────────────────────────────
+  // Fires at most once per conversation per OOO window. Skipped for spam
+  // (we don't want the OOO reply to flag bots) and skipped if the helper
+  // says the account is not currently OOO. The send is fire-and-forget
+  // via after() so the ingest path stays fast.
+  if (!spamResult.isSpam && isAccountOOO(accountRow)) {
+    const windowStart = accountRow.ooo_starts_at ?? null
+    const isFirst = await shouldSendOOOReply(supabase, account_id, conversationId, windowStart)
+    if (isFirst) {
+      // Resolve company name for the {{company.name}} variable. Best-effort —
+      // if the account isn't attached to a company we just render the
+      // variable as an empty string.
+      let companyName: string | null = null
+      if (accountRow.company_id) {
+        const { data: companyRow } = await supabase
+          .from('companies')
+          .select('name')
+          .eq('id', accountRow.company_id)
+          .maybeSingle()
+        companyName = companyRow?.name ?? null
+      }
+
+      const subject = substituteOOOVariables(accountRow.ooo_subject || 'Out of office', {
+        customer: { name: senderName, email: senderEmail },
+        company: { name: companyName },
+        ooo: { ends_at: accountRow.ooo_ends_at },
+      })
+      const bodyText = substituteOOOVariables(accountRow.ooo_body || '', {
+        customer: { name: senderName, email: senderEmail },
+        company: { name: companyName },
+        ooo: { ends_at: accountRow.ooo_ends_at },
+      })
+
+      // Reserve the dedup row BEFORE the send so two concurrent inbounds
+      // don't both fire an OOO reply. The unique index makes the loser's
+      // insert fail; we treat that as "already replied" and skip.
+      const reserved = await recordOOOReply(supabase, account_id, conversationId, windowStart)
+      if (reserved) {
+        after(async () => {
+          try {
+            const result = await sendEmail({
+              accountId: account_id,
+              to: senderEmail,
+              subject: subject || 'Out of office',
+              body: bodyText || 'I am currently out of office and will respond when I return.',
+              replyToMessageId: thread_id ?? null,
+            })
+            if (!result.ok) {
+              logError('webhook', 'ooo_reply_send_failed', result.error, {
+                request_id: requestId,
+                account_id,
+                conversation_id: conversationId,
+              })
+            } else {
+              logInfo('webhook', 'ooo_reply_sent', `OOO auto-reply sent to ${senderEmail}`, {
+                request_id: requestId,
+                account_id,
+                conversation_id: conversationId,
+                provider_message_id: result.provider_message_id,
+              })
+            }
+          } catch (sendErr) {
+            logError('webhook', 'ooo_reply_send_failed', sendErr instanceof Error ? sendErr.message : 'unknown', {
+              request_id: requestId,
+              account_id,
+              conversation_id: conversationId,
+            })
+          }
+        })
+      }
     }
   }
 

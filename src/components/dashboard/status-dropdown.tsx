@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, Loader2, Check } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { createClient } from '@/lib/supabase-client'
 import { useToast } from '@/components/ui/toast'
 import type { ConversationStatus } from '@/types/database'
 
@@ -101,12 +100,17 @@ export function StatusDropdown({
     setLoading(true)
     setOpen(false)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('conversations')
-        .update({ status: newStatus })
-        .eq('id', conversationId)
-      if (error) throw error
+      // Hits the dedicated API route (not direct supabase) so the change is
+      // captured in audit_log → surfaces on the conversation activity timeline.
+      const res = await fetch(`/api/conversations/${conversationId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(payload.error || `Request failed (${res.status})`)
+      }
       setStatus(newStatus)
       toast.success(`Status changed to ${statusConfig[newStatus].label}`)
       router.refresh()
@@ -123,15 +127,18 @@ export function StatusDropdown({
     setLoading(true)
     setOpen(false)
     try {
-      const supabase = createClient()
       const payload = next
         ? { secondary_status: next.name, secondary_status_color: next.color }
         : { secondary_status: null, secondary_status_color: null }
-      const { error } = await supabase
-        .from('conversations')
-        .update(payload)
-        .eq('id', conversationId)
-      if (error) throw error
+      const res = await fetch(`/api/conversations/${conversationId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const payloadErr = await res.json().catch(() => ({}))
+        throw new Error(payloadErr.error || `Request failed (${res.status})`)
+      }
       setSecondary(next?.name ?? null)
       setSecondaryColor(next?.color ?? null)
       toast.success(next ? `Sub-status: ${next.name}` : 'Sub-status cleared')

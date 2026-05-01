@@ -73,6 +73,71 @@ interface ModalFormState {
   spam_allowlist: string[]
   monthly_ai_budget_usd: number
   ai_budget_alert_at_pct: number
+  // Out-of-office auto-reply config (datetime-local strings; persisted as ISO).
+  ooo_enabled: boolean
+  ooo_starts_at: string
+  ooo_ends_at: string
+  ooo_subject: string
+  ooo_body: string
+}
+
+/**
+ * Convert an ISO timestamp (or null) to the value an `<input type="datetime-local">`
+ * expects: "yyyy-MM-ddTHH:mm" in the LOCAL timezone. The browser-native input
+ * is local-time-only, so we need to format from the user's perspective.
+ */
+function isoToDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return ''
+  const d = new Date(t)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/**
+ * Convert a `datetime-local` value back to an ISO string (UTC). The
+ * browser parses the local value with the user's timezone applied so
+ * `new Date(local)` yields the right instant.
+ */
+function datetimeLocalToIso(local: string): string | null {
+  if (!local) return null
+  const t = Date.parse(local)
+  if (!Number.isFinite(t)) return null
+  return new Date(t).toISOString()
+}
+
+/** Format an ISO timestamp for the OOO banner ("Apr 30, 2026, 5:00 PM"). */
+function formatOOOEnd(iso: string | null | undefined): string {
+  if (!iso) return 'further notice'
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return 'further notice'
+  return new Date(t).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+/**
+ * Returns true if the account's OOO window is active right now.
+ * Mirrors the server-side `isAccountOOO` so the badge / banner stay
+ * in sync without a round-trip.
+ */
+function isAccountOOOActive(a: Account): boolean {
+  if (!a.ooo_enabled) return false
+  const now = Date.now()
+  if (a.ooo_starts_at) {
+    const t = Date.parse(a.ooo_starts_at)
+    if (Number.isFinite(t) && now < t) return false
+  }
+  if (a.ooo_ends_at) {
+    const t = Date.parse(a.ooo_ends_at)
+    if (Number.isFinite(t) && now > t) return false
+  }
+  return true
 }
 
 // Sentinel value used in the company <select> to mean "open the inline
@@ -149,6 +214,11 @@ export default function AccountsPage() {
           : [],
         monthly_ai_budget_usd: Number(detailAccount.monthly_ai_budget_usd ?? 50),
         ai_budget_alert_at_pct: Number(detailAccount.ai_budget_alert_at_pct ?? 90),
+        ooo_enabled: !!detailAccount.ooo_enabled,
+        ooo_starts_at: isoToDatetimeLocal(detailAccount.ooo_starts_at ?? null),
+        ooo_ends_at: isoToDatetimeLocal(detailAccount.ooo_ends_at ?? null),
+        ooo_subject: detailAccount.ooo_subject ?? 'Out of office',
+        ooo_body: detailAccount.ooo_body ?? '',
       })
       setAllowlistDraft('')
       setShowNewCompanyInput(false)
@@ -333,6 +403,70 @@ export default function AccountsPage() {
     )
     setAllowlistDraft('')
   }, [allowlistDraft, modalForm])
+
+  // Save OOO config via the dedicated API. Separate from the bulk
+  // saveAccountSettings flow because OOO is auth-gated more strictly
+  // (company_admin / super_admin only) and surfaces validation errors
+  // distinctly (bad date range, etc.).
+  const saveOOO = useCallback(async () => {
+    if (!detailAccount || !modalForm) return
+    setSaving(true)
+    try {
+      const payload = {
+        ooo_enabled: modalForm.ooo_enabled,
+        ooo_starts_at: datetimeLocalToIso(modalForm.ooo_starts_at),
+        ooo_ends_at: datetimeLocalToIso(modalForm.ooo_ends_at),
+        ooo_subject: modalForm.ooo_subject || null,
+        ooo_body: modalForm.ooo_body || null,
+      }
+      const res = await fetch(`/api/accounts/${detailAccount.id}/ooo`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = (await res.json().catch(() => null)) as
+        | { ooo?: { ooo_enabled: boolean; ooo_starts_at: string | null; ooo_ends_at: string | null; ooo_subject: string | null; ooo_body: string | null }; error?: string }
+        | null
+      if (!res.ok) {
+        setToast({ type: 'error', message: json?.error || `Failed to save OOO (${res.status})` })
+        return
+      }
+      // Reflect server-canonical values into local state so banner / badge
+      // stay accurate without a refetch.
+      const ooo = json?.ooo
+      if (ooo) {
+        setAccounts((prev) =>
+          prev.map((a) =>
+            a.id === detailAccount.id
+              ? {
+                  ...a,
+                  ooo_enabled: ooo.ooo_enabled,
+                  ooo_starts_at: ooo.ooo_starts_at,
+                  ooo_ends_at: ooo.ooo_ends_at,
+                  ooo_subject: ooo.ooo_subject,
+                  ooo_body: ooo.ooo_body,
+                }
+              : a
+          )
+        )
+        setDetailAccount((prev) =>
+          prev
+            ? {
+                ...prev,
+                ooo_enabled: ooo.ooo_enabled,
+                ooo_starts_at: ooo.ooo_starts_at,
+                ooo_ends_at: ooo.ooo_ends_at,
+                ooo_subject: ooo.ooo_subject,
+                ooo_body: ooo.ooo_body,
+              }
+            : null
+        )
+      }
+      setToast({ type: 'success', message: 'Out-of-office settings saved' })
+    } finally {
+      setSaving(false)
+    }
+  }, [detailAccount, modalForm])
 
   const removeAllowlistEntry = useCallback((entry: string) => {
     setModalForm((prev) =>
@@ -657,10 +791,18 @@ export default function AccountsPage() {
                         className="flex items-center gap-4 px-5 py-3 hover:bg-teal-50/30 cursor-pointer transition-colors"
                         onClick={() => setDetailAccount(account)}
                       >
-                        <div className="flex items-center gap-2 w-28 shrink-0">
+                        <div className="flex items-center gap-2 w-32 shrink-0">
                           <span className={`h-2 w-2 rounded-full shrink-0 ${getStatusDot(account)}`} />
                           <ChannelIcon channel={account.channel_type} size={16} />
                           <span className="text-xs font-medium text-gray-700">{getChannelLabel(account.channel_type)}</span>
+                          {isAccountOOOActive(account) && (
+                            <span
+                              className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+                              title={`Out of office until ${formatOOOEnd(account.ooo_ends_at)}`}
+                            >
+                              OOO
+                            </span>
+                          )}
                         </div>
 
                         <div className="w-44 min-w-0 shrink-0">
@@ -1166,6 +1308,108 @@ export default function AccountsPage() {
                   checked={modalForm.sla_auto_escalate}
                   onChange={(val) => toggleField('sla_auto_escalate', val)}
                 />
+              </div>
+            </div>
+
+            {/* Out of Office */}
+            <div className="rounded-lg border border-gray-200 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Out of Office</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    When enabled and inside the window, every new conversation receives an
+                    automatic reply (once per OOO window). The original message still routes
+                    normally so you see it when you're back.
+                  </p>
+                </div>
+                <Toggle
+                  checked={modalForm.ooo_enabled}
+                  onChange={(val) =>
+                    setModalForm((prev) => (prev ? { ...prev, ooo_enabled: val } : prev))
+                  }
+                />
+              </div>
+
+              {/* Active banner */}
+              {detailAccount.ooo_enabled && isAccountOOOActive(detailAccount) && (
+                <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs font-medium text-amber-800">
+                  Out of office until {formatOOOEnd(detailAccount.ooo_ends_at)} — auto-replies enabled
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start</label>
+                  <input
+                    type="datetime-local"
+                    value={modalForm.ooo_starts_at}
+                    onChange={(e) =>
+                      setModalForm((prev) =>
+                        prev ? { ...prev, ooo_starts_at: e.target.value } : prev
+                      )
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Leave blank to start immediately.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End</label>
+                  <input
+                    type="datetime-local"
+                    value={modalForm.ooo_ends_at}
+                    onChange={(e) =>
+                      setModalForm((prev) =>
+                        prev ? { ...prev, ooo_ends_at: e.target.value } : prev
+                      )
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Leave blank for no scheduled return.</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                <Input
+                  value={modalForm.ooo_subject}
+                  onChange={(e) =>
+                    setModalForm((prev) =>
+                      prev ? { ...prev, ooo_subject: e.target.value } : prev
+                    )
+                  }
+                  placeholder="Out of office"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Body</label>
+                <textarea
+                  value={modalForm.ooo_body}
+                  onChange={(e) =>
+                    setModalForm((prev) =>
+                      prev ? { ...prev, ooo_body: e.target.value } : prev
+                    )
+                  }
+                  rows={5}
+                  placeholder="Hi {{customer.name}}, I'm currently out of office and will respond when I return on {{ooo.return_date}}. — {{company.name}}"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none resize-y font-mono"
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Variables: <code className="rounded bg-gray-100 px-1">{`{{customer.name}}`}</code>{' '}
+                  <code className="rounded bg-gray-100 px-1">{`{{ooo.return_date}}`}</code>{' '}
+                  <code className="rounded bg-gray-100 px-1">{`{{company.name}}`}</code>
+                </p>
+              </div>
+
+              <div className="pt-1">
+                <Button
+                  variant="primary"
+                  onClick={saveOOO}
+                  loading={saving}
+                  className="w-full sm:w-auto"
+                >
+                  {saving ? 'Saving…' : 'Save out-of-office'}
+                </Button>
               </div>
             </div>
 
