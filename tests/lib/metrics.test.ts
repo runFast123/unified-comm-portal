@@ -1,3 +1,8 @@
+// Disable the post-recordMetric eager flush so tests can inspect the buffer
+// before it gets drained. Production behavior (always flush via after()) is
+// covered separately by the integration / smoke tests.
+process.env.METRICS_DISABLE_AUTO_FLUSH = '1'
+
 import { recordMetric, __getBufferForTests, __resetBufferForTests, flushNow } from '@/lib/metrics'
 
 describe('metrics.recordMetric', () => {

@@ -89,7 +89,7 @@ async function fetchCandidatePool(
   // fall back to admins (any account) so an unconfigured team still gets
   // someone responsible.
   if (scope.team) {
-    const nonAdmins = users.filter((u) => u.role !== 'admin')
+    const nonAdmins = users.filter((u) => !['admin','super_admin','company_admin'].includes(u.role))
     if (nonAdmins.length > 0) return nonAdmins
 
     const { data: admins } = await supabase

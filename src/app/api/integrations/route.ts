@@ -27,7 +27,7 @@ async function requireAdmin(): Promise<Gate> {
     .select('role')
     .eq('id', user.id)
     .maybeSingle()
-  if (profile?.role !== 'admin') return { ok: false, status: 403, error: 'Admin only' }
+  if (!['admin','super_admin','company_admin'].includes(profile?.role ?? '')) return { ok: false, status: 403, error: 'Admin only' }
   return { ok: true, userId: user.id }
 }
 

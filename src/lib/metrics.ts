@@ -111,7 +111,7 @@ export async function flushNow(): Promise<void> {
       return
     }
 
-    await fetch(`${supabaseUrl}/rest/v1/metrics_events`, {
+    const res = await fetch(`${supabaseUrl}/rest/v1/metrics_events`, {
       method: 'POST',
       headers: {
         apikey: serviceKey,
@@ -129,6 +129,18 @@ export async function flushNow(): Promise<void> {
         }))
       ),
     })
+    // fetch() doesn't throw on non-2xx — explicit check so a 401/400 doesn't
+    // silently swallow the entire batch. Without this every metric event
+    // disappeared on a column-mismatch or auth-misconfiguration with no
+    // operator-visible signal. Console-only to avoid recursion through the
+    // structured logger (which itself writes to audit_log).
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[metrics] flush HTTP ${res.status}: dropped ${batch.length} events. body=${body.slice(0, 200)}`
+      )
+    }
   } catch (err) {
     // Console only — the structured logger writes to audit_log, and we don't
     // want a metrics flush failure to spam audit_log every 10 seconds.
@@ -186,10 +198,29 @@ export function recordMetric(
       request_id: typeof requestId === 'string' && requestId.length > 0 ? requestId : null,
     })
 
-    if (buffer.length >= FLUSH_BATCH_SIZE) {
+    // ALWAYS schedule via after() — the setTimeout-based scheduleFlush()
+    // path doesn't work on Vercel because the lambda is torn down once
+    // the response is sent (the timer is .unref()'d so it can't keep the
+    // runtime alive). Cron routes only buffer 3-5 metrics per run — far
+    // below the 100-event eager threshold — so without after() the
+    // metrics_events table never received any writes from cron.
+    //
+    // after() keeps the lambda alive until the post-response callback
+    // completes, which is exactly when we want to flush. Multiple
+    // recordMetric calls in the same request register multiple after()
+    // callbacks; the first one drains the buffer, the rest no-op
+    // harmlessly.
+    //
+    // Tests set METRICS_DISABLE_AUTO_FLUSH=1 so they can inspect the
+    // buffer without a sneaky drain happening between push and assert.
+    if (process.env.METRICS_DISABLE_AUTO_FLUSH !== '1') {
       eagerFlush()
-    } else {
-      scheduleFlush()
+      // Keep the setTimeout fallback for environments without a request
+      // context (e.g. background scripts). It's a no-op on Vercel because
+      // of the .unref() but doesn't hurt.
+      if (buffer.length < FLUSH_BATCH_SIZE) {
+        scheduleFlush()
+      }
     }
   } catch {
     // Belt-and-braces: even if normalize / scheduling throw, swallow.

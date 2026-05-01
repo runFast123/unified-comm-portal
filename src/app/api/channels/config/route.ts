@@ -25,7 +25,7 @@ async function requireAdmin(): Promise<
     .select('role')
     .eq('id', user.id)
     .maybeSingle()
-  if (profile?.role !== 'admin') {
+  if (!['admin','super_admin','company_admin'].includes(profile?.role ?? '')) {
     return { ok: false, status: 403, error: 'Admin only' }
   }
   return { ok: true, ctx: { userId: user.id } }

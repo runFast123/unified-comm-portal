@@ -8,7 +8,7 @@ async function requireAdmin() {
   if (!user) return { ok: false as const, status: 401, error: 'Unauthorized' }
   const admin = await createServiceRoleClient()
   const { data: profile } = await admin.from('users').select('role').eq('id', user.id).maybeSingle()
-  if (profile?.role !== 'admin') return { ok: false as const, status: 403, error: 'Admin only' }
+  if (!['admin','super_admin','company_admin'].includes(profile?.role ?? '')) return { ok: false as const, status: 403, error: 'Admin only' }
   return { ok: true as const, userId: user.id }
 }
 

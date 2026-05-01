@@ -121,7 +121,7 @@ async function requireAdminUser(): Promise<void> {
     .select('role')
     .eq('id', user.id)
     .maybeSingle()
-  if (profile?.role !== 'admin') redirect('/dashboard')
+  if (!['admin','super_admin','company_admin'].includes(profile?.role ?? '')) redirect('/dashboard')
 }
 
 // ─── Data load ─────────────────────────────────────────────────────────

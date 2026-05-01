@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const admin = await createServiceRoleClient()
   const { data: profile } = await admin.from('users').select('role').eq('id', user.id).maybeSingle()
-  if (profile?.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+  if (!['admin','super_admin','company_admin'].includes(profile?.role ?? '')) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
   // Test calls hit real SMTP/Graph/WhatsApp endpoints — keep them tight.
   if (!(await checkRateLimit(`test-connection:${user.id}`, 10, 60))) {

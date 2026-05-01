@@ -72,7 +72,7 @@ export default async function ContactProfilePage({
     .select('role')
     .eq('id', user.id)
     .maybeSingle()
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = ['admin','super_admin','company_admin'].includes(profile?.role ?? '')
 
   const { data: contactRow, error: contactErr } = await admin
     .from('contacts')

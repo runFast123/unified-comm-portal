@@ -197,7 +197,7 @@ export default function UsersPage() {
 
   // Stats
   const activeCount = users.filter((u) => u.is_active).length
-  const adminCount = users.filter((u) => u.role === 'admin').length
+  const adminCount = users.filter((u) => ['admin','super_admin','company_admin'].includes(u.role)).length
   const viewersWithoutAccount = users.filter(
     (u) => u.role === 'viewer' && !u.account_id
   ).length

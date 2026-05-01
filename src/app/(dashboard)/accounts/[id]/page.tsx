@@ -48,7 +48,7 @@ export default async function AccountDetailPage({
   }
 
   // Non-admin users can only view their company's accounts
-  if (profile?.role !== 'admin' && profile?.account_id) {
+  if (!['admin','super_admin','company_admin'].includes(profile?.role ?? '') && profile?.account_id) {
     // Get user's own account name via REST API
     const myAccRes = await fetch(
       `${supabaseUrl}/rest/v1/accounts?id=eq.${profile.account_id}&select=name&limit=1`,

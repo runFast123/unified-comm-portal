@@ -23,7 +23,7 @@ export async function GET() {
     .eq('id', user.id)
     .maybeSingle()
 
-  if (profile?.role !== 'admin') {
+  if (!['admin','super_admin','company_admin'].includes(profile?.role ?? '')) {
     return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   }
 

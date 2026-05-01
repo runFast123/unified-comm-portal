@@ -49,7 +49,7 @@ export default async function DashboardLayout({
   // users — using the proper `accounts.company_id` FK. Uses service-role
   // client because RLS may hide other-channel rows from the user.
   let companyAccountIds: string[] = user.account_id ? [user.account_id] : []
-  if (user.role !== 'admin' && user.account_id) {
+  if (!['admin','super_admin','company_admin'].includes(user.role) && user.account_id) {
     try {
       const service = await createServiceRoleClient()
       const { data: myAccount } = await service
@@ -96,7 +96,7 @@ export default async function DashboardLayout({
     .from('ai_replies')
     .select('*', { count: 'exact', head: true })
     .eq('status', 'pending_approval')
-  if (user.role !== 'admin' && companyAccountIds.length > 0) {
+  if (!['admin','super_admin','company_admin'].includes(user.role) && companyAccountIds.length > 0) {
     pendingQuery = pendingQuery.in('account_id', companyAccountIds)
   }
   const { count: pendingCount } = await pendingQuery
