@@ -1188,48 +1188,26 @@ export default function InboxPage() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Filters bar — narrow facet dropdowns + search. The 3 view-scope
+         toggles (My Conversations / Show snoozed / Save view) used to sit
+         here detached on the right edge — they've been moved to the
+         toolbar row below where they group naturally with the other
+         scope/action controls. */}
       {inboxView === 'inbox' && (
-      <div className="flex items-center gap-3">
-        <div className="flex-1">
+        <div>
           <InboxFiltersBar filters={filters} onChange={setFilters} />
         </div>
-        <button
-          onClick={() => setMyConversationsOnly(!myConversationsOnly)}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
-            myConversationsOnly
-              ? 'bg-teal-600 text-white shadow-sm'
-              : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <User size={14} />
-          My Conversations
-        </button>
-        <button
-          onClick={() => setShowSnoozed((v) => !v)}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
-            showSnoozed
-              ? 'bg-amber-500 text-white shadow-sm'
-              : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-amber-300 hover:text-amber-700'
-          }`}
-          title={showSnoozed ? 'Hide snoozed conversations' : 'Show snoozed conversations alongside your inbox'}
-        >
-          <Clock size={14} />
-          {showSnoozed ? 'Hide snoozed' : 'Show snoozed'}
-        </button>
-        <button
-          onClick={() => { setEditingView(null); setShowSaveViewModal(true) }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 transition-colors whitespace-nowrap"
-          title="Save current filters as a view"
-        >
-          <Bookmark size={14} />
-          <span className="hidden sm:inline">Save view</span>
-        </button>
-      </div>
       )}
 
-      {/* Actions bar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* ─────────────────────── Toolbar ───────────────────────────────
+         All scope/view/action controls live in ONE bar. Three groups
+         separated by vertical dividers so the eye reads them as distinct:
+           [Showing X • View mode]   [Scope toggles]   [Bulk actions]
+         The 3 scope toggles (My Conversations / Show snoozed / Save view)
+         used to sit detached on the filters row — they belong here with
+         the other "act on the inbox" controls. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-gray-200 bg-white px-4 py-3">
+        {/* ─ Group 1: count + view mode ─────────────────────────────── */}
         <div className="flex items-center gap-3">
           <p className="text-sm text-gray-600">
             Showing{' '}
@@ -1238,14 +1216,14 @@ export default function InboxPage() {
             <span className="font-semibold text-gray-900">{items.length}</span>{' '}
             {items.length === 1 ? 'message' : 'messages'}
           </p>
-          {/* View mode toggle - hidden on mobile (split view not usable) */}
-          <div className="hidden sm:flex items-center rounded-lg border border-gray-200 bg-white p-1">
+          {/* View mode toggle — hidden on mobile (split view not usable) */}
+          <div className="hidden sm:flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
             <button
               onClick={() => handleViewModeChange('list')}
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 viewMode === 'list'
                   ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-white'
               }`}
               title="List view"
             >
@@ -1257,7 +1235,7 @@ export default function InboxPage() {
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 viewMode === 'split'
                   ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-white'
               }`}
               title="Split view"
             >
@@ -1269,7 +1247,7 @@ export default function InboxPage() {
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 viewMode === 'kanban'
                   ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-white'
               }`}
               title="Kanban board"
             >
@@ -1278,7 +1256,51 @@ export default function InboxPage() {
             </button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+
+        {/* ─ Group 2: scope toggles (moved here from the filters row) ─ */}
+        {inboxView === 'inbox' && (
+          <>
+            <div className="hidden md:block h-6 w-px bg-gray-200" />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setMyConversationsOnly(!myConversationsOnly)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
+                  myConversationsOnly
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <User size={14} />
+                <span className="hidden sm:inline">My Conversations</span>
+                <span className="sm:hidden">Mine</span>
+              </button>
+              <button
+                onClick={() => setShowSnoozed((v) => !v)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
+                  showSnoozed
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-amber-300 hover:text-amber-700'
+                }`}
+                title={showSnoozed ? 'Hide snoozed conversations' : 'Show snoozed conversations alongside your inbox'}
+              >
+                <Clock size={14} />
+                <span className="hidden sm:inline">{showSnoozed ? 'Hide snoozed' : 'Show snoozed'}</span>
+                <span className="sm:hidden">Snoozed</span>
+              </button>
+              <button
+                onClick={() => { setEditingView(null); setShowSaveViewModal(true) }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 transition-colors whitespace-nowrap"
+                title="Save current filters as a view"
+              >
+                <Bookmark size={14} />
+                <span className="hidden sm:inline">Save view</span>
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ─ Group 3: bulk actions (right-aligned with ml-auto) ────── */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {/* Sync — manually fire IMAP/Graph pollers. Shows last sync time. */}
           <Button
             variant="secondary"
