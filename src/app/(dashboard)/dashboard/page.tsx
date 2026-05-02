@@ -1265,7 +1265,7 @@ export default function DashboardPage() {
                   {stat.messageCount}
                 </p>
                 <p className="text-xs text-gray-500">messages</p>
-                <div className="mt-3 flex items-center justify-center gap-3 text-xs">
+                <div className="mt-3 flex flex-col items-center space-y-1.5 text-xs">
                   <span className="text-orange-600">
                     {stat.pendingCount} pending
                   </span>
@@ -1275,7 +1275,7 @@ export default function DashboardPage() {
                 </div>
                 {/* Channel color bar at bottom */}
                 <div
-                  className={`mt-3 h-1 w-full rounded-full ${getChannelBgColor(stat.channel)}`}
+                  className={`mt-3 h-2 w-full rounded-full ${getChannelBgColor(stat.channel)}`}
                 />
               </div>
             ))}
@@ -1386,14 +1386,18 @@ export default function DashboardPage() {
         description={`Per-account metrics for the selected period`}
         className="animate-slide-up stagger-5"
       >
-        <CompanyStatsTable
-          stats={companyStats.filter(s => {
-            if (selectedAccountIds.size > 0 && !selectedAccountIds.has(s.id)) return false
-            if (channelFilter !== 'all' && s.channel_type !== channelFilter) return false
-            return true
-          })}
-          companyAccountIds={!isAdmin && companyAccountIds.length > 0 ? companyAccountIds : undefined}
-        />
+        <div className="overflow-x-auto">
+          <div className="min-w-[800px]">
+            <CompanyStatsTable
+              stats={companyStats.filter(s => {
+                if (selectedAccountIds.size > 0 && !selectedAccountIds.has(s.id)) return false
+                if (channelFilter !== 'all' && s.channel_type !== channelFilter) return false
+                return true
+              })}
+              companyAccountIds={!isAdmin && companyAccountIds.length > 0 ? companyAccountIds : undefined}
+            />
+          </div>
+        </div>
       </Card>}
     </div>
   )

@@ -45,7 +45,10 @@ export function DateRangePicker({ activeRange, onChange, customFrom, customTo, o
             className={cn(
               'inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium tracking-tight transition-all',
               activeRange === preset.value
-                ? 'bg-white text-gray-900 shadow-[0_1px_2px_rgba(16,24,40,0.06)] ring-1 ring-gray-200/80'
+                // Active state now uses teal — was a darker neutral that
+                // diverged from the brand's teal active-state used on every
+                // other dashboard period selector.
+                ? 'bg-teal-600 text-white shadow-sm'
                 : 'text-gray-500 hover:text-gray-800'
             )}
           >

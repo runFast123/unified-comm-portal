@@ -289,7 +289,7 @@ export function ActivityFeed() {
           No recent activity
         </div>
       ) : (
-        <div className="max-h-[320px] overflow-y-auto space-y-0.5 pr-1 scrollbar-thin">
+        <div className="max-h-[320px] overflow-y-auto space-y-0.5 pr-1 pt-2 scrollbar-thin">
           {events.slice(0, 15).map((event) => (
             <div
               key={event.id}

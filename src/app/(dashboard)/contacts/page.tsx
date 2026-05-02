@@ -183,6 +183,10 @@ export default function ContactsPage() {
 
   const stats = useMemo(() => {
     const vipCount = contacts.filter((c) => c.is_vip).length
+    // "New this week" = contact.first_seen_at within the last 7 rolling days
+    // (NOT the calendar week). On a small / freshly-seeded DB where every
+    // contact was created in the last week, this can legitimately equal the
+    // total contact count — that's not a bug.
     const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
     const newThisWeek = contacts.filter(
       (c) => c.first_seen_at && new Date(c.first_seen_at).getTime() >= oneWeekAgo
@@ -254,7 +258,12 @@ export default function ContactsPage() {
             Unified customer profiles across every channel and account.
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => fetchContacts()}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => fetchContacts()}
+          className="border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-700"
+        >
           <RefreshCw className="h-4 w-4" />
           Refresh
         </Button>
@@ -301,11 +310,12 @@ export default function ContactsPage() {
         <button
           type="button"
           onClick={() => setVipOnly((v) => !v)}
+          aria-pressed={vipOnly}
           className={cn(
-            'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            'inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
             vipOnly
-              ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-200'
-              : 'bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-200'
+              ? 'border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200'
+              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
           )}
         >
           <Crown className="h-4 w-4" />
@@ -419,15 +429,31 @@ export default function ContactsPage() {
                           <span className="text-xs text-gray-400">—</span>
                         ) : (
                           <div className="flex items-center gap-1.5">
-                            {c.channels.map((ch) => (
-                              <span
-                                key={ch}
-                                title={ch}
-                                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-50 ring-1 ring-gray-200"
-                              >
-                                <ChannelIcon channel={ch} size={12} />
-                              </span>
-                            ))}
+                            {c.channels.map((ch) => {
+                              // Channel-brand-coloured pill, no border. Email
+                              // = blue, Teams = purple, WhatsApp = green —
+                              // matches each platform's identity at a glance.
+                              const tint =
+                                ch === 'email'
+                                  ? 'bg-blue-50 text-blue-600'
+                                  : ch === 'teams'
+                                  ? 'bg-purple-50 text-purple-600'
+                                  : ch === 'whatsapp'
+                                  ? 'bg-green-50 text-green-600'
+                                  : 'bg-gray-50 text-gray-600'
+                              return (
+                                <span
+                                  key={ch}
+                                  title={ch}
+                                  className={cn(
+                                    'inline-flex h-6 w-6 items-center justify-center rounded-full',
+                                    tint
+                                  )}
+                                >
+                                  <ChannelIcon channel={ch} size={12} />
+                                </span>
+                              )
+                            })}
                           </div>
                         )}
                       </TableCell>

@@ -486,55 +486,79 @@ export default async function ObservabilityPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Observability</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Operational SLIs from the <code className="font-mono text-xs">metrics_events</code> stream.
+          Operational SLIs from the{' '}
+          <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">metrics_events</code> stream.
           Last hour KPIs at the top; rolling charts and tables below. All times UTC server-time.
         </p>
       </div>
 
-      {/* Top-row SLIs */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Kpi
-          label="Cron success (1h)"
-          value={fmtPct(cronSuccessRate)}
-          sub={`${cronOk}/${cronTotal} runs`}
-          status={cronSuccessRate >= 99 ? 'good' : cronSuccessRate >= 95 ? 'warn' : 'bad'}
-        />
-        <Kpi
-          label="Messages ingested (1h)"
-          value={messagesIngestedLastHour.toLocaleString()}
-          sub="from email + teams crons"
-          status="neutral"
-        />
-        <Kpi
-          label="AI calls (1h)"
-          value={aiCallsCount.toLocaleString()}
-          sub={`spend ${fmtUsd(aiSpendLastHour)}`}
-          status="neutral"
-        />
-        <Kpi
-          label="AI spend (today)"
-          value={fmtUsd(aiSpendToday)}
-          sub={`${data.aiUsage24h.length} calls in 24h`}
-          status="neutral"
-        />
-        <Kpi
-          label="AI error rate (1h)"
-          value={fmtPct(aiErrorRate)}
-          sub={`${aiErrorsCount}/${aiCallsCount} errors`}
-          status={aiErrorRate <= 1 ? 'good' : aiErrorRate <= 5 ? 'warn' : 'bad'}
-        />
-        <Kpi
-          label="Webhook 5xx rate (1h)"
-          value={fmtPct(webhook5xxRate)}
-          sub={`${data.webhook5xxLastHour}/${data.webhookTotalLastHour} cron runs`}
-          status={webhook5xxRate <= 1 ? 'good' : webhook5xxRate <= 5 ? 'warn' : 'bad'}
-        />
+      {/* Top-row SLIs — grouped into three logical sections so operators can
+          scan by domain (system / cost / reliability) instead of squinting at
+          a single 6-tile strip of mixed metrics. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+            System Health
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Kpi
+              label="Cron success (1h)"
+              value={fmtPct(cronSuccessRate)}
+              sub={`${cronOk}/${cronTotal} runs`}
+              status={cronSuccessRate >= 99 ? 'good' : cronSuccessRate >= 95 ? 'warn' : 'bad'}
+            />
+            <Kpi
+              label="AI error rate (1h)"
+              value={fmtPct(aiErrorRate)}
+              sub={`${aiErrorsCount}/${aiCallsCount} errors`}
+              status={aiErrorRate <= 1 ? 'good' : aiErrorRate <= 5 ? 'warn' : 'bad'}
+            />
+          </div>
+        </section>
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+            AI Cost
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Kpi
+              label="AI calls (1h)"
+              value={aiCallsCount.toLocaleString()}
+              sub={`spend ${fmtUsd(aiSpendLastHour)}`}
+              status="neutral"
+            />
+            <Kpi
+              label="AI spend (today)"
+              value={fmtUsd(aiSpendToday)}
+              sub={`${data.aiUsage24h.length} calls in 24h`}
+              status="neutral"
+            />
+          </div>
+        </section>
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Reliability
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Kpi
+              label="Webhook 5xx rate (1h)"
+              value={fmtPct(webhook5xxRate)}
+              sub={`${data.webhook5xxLastHour}/${data.webhookTotalLastHour} cron runs`}
+              status={webhook5xxRate <= 1 ? 'good' : webhook5xxRate <= 5 ? 'warn' : 'bad'}
+            />
+            <Kpi
+              label="Messages ingested (1h)"
+              value={messagesIngestedLastHour.toLocaleString()}
+              sub="from email + teams crons"
+              status="neutral"
+            />
+          </div>
+        </section>
       </div>
 
       {/* Per-cron p50 / p95 */}
       <Card
         title="Cron duration percentiles (last hour)"
-        description="Per cron name, sourced from cron.<name>.duration_ms metric events."
+        description="Per cron name. Each cron route emits a duration metric on completion; p50 and p95 are computed across the last hour."
       >
         {cronStats.length === 0 ? (
           <div className="text-sm text-gray-500">

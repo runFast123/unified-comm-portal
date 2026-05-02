@@ -160,6 +160,9 @@ export default function InboxPage() {
   })
   const [spamCount, setSpamCount] = useState(0)
   const [newsletterCount, setNewsletterCount] = useState(0)
+  // Inbox count = total non-spam inbound messages. Mirrors the spam/newsletter
+  // count queries below so all three tabs show a badge consistently (#5.7).
+  const [inboxCount, setInboxCount] = useState(0)
   // Dashboard filter from URL params (e.g., ?filter=pending, ?filter=sla_breached)
   const [dashboardFilter] = useState<string | null>(() => {
     if (typeof window !== 'undefined') return new URLSearchParams(window.location.search).get('filter')
@@ -437,10 +440,23 @@ export default function InboxPage() {
         spamCountQuery = spamCountQuery.in('account_id', resolvedAccountIds)
       }
 
-      const [messagesResult, newsletterCountResult, spamCountResult] = await Promise.all([
+      // Inbox count = inbound messages that are NOT marked as spam. Used to
+      // populate the badge on the "Inbox" tab so all three tabs show counts
+      // consistently (#5.7).
+      let inboxCountQuery = supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('direction', 'inbound')
+        .eq('is_spam', false)
+      if (!isAdmin && resolvedAccountIds.length > 0) {
+        inboxCountQuery = inboxCountQuery.in('account_id', resolvedAccountIds)
+      }
+
+      const [messagesResult, newsletterCountResult, spamCountResult, inboxCountResult] = await Promise.all([
         messagesQuery,
         newsletterCountQuery,
         spamCountQuery,
+        inboxCountQuery,
       ])
 
       if (messagesResult.error) {
@@ -449,6 +465,7 @@ export default function InboxPage() {
 
       setNewsletterCount(newsletterCountResult.count ?? 0)
       setSpamCount(spamCountResult.count ?? 0)
+      setInboxCount(inboxCountResult.count ?? 0)
 
       const data = messagesResult.data
       if (!data) {
@@ -1121,6 +1138,17 @@ export default function InboxPage() {
         >
           <Inbox className="h-4 w-4" />
           Inbox
+          {inboxCount > 0 && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                inboxView === 'inbox'
+                  ? 'bg-white/25 text-white'
+                  : 'bg-teal-100 text-teal-800'
+              }`}
+            >
+              {inboxCount}
+            </span>
+          )}
         </button>
         <button
           onClick={() => { setInboxView('newsletter'); setSelectedItem(null) }}

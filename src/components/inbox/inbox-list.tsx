@@ -8,7 +8,7 @@ import type { InboxItem } from '@/types/database'
 type SortKey = 'time_waiting' | 'priority' | 'channel'
 
 const sortOptions = [
-  { value: 'time_waiting', label: 'Time Waiting' },
+  { value: 'time_waiting', label: 'Longest waiting' },
   { value: 'priority', label: 'Priority' },
   { value: 'channel', label: 'Channel' },
 ]

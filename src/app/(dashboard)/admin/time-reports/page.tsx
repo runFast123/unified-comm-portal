@@ -12,13 +12,16 @@
  *   3. Average time per conversation by status.
  */
 
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { Clock } from 'lucide-react'
 import {
   createServerSupabaseClient,
   createServiceRoleClient,
 } from '@/lib/supabase-server'
 import { isCompanyAdmin } from '@/lib/auth'
 import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { aggregateForCompany } from '@/lib/time-tracking'
 
 export const dynamic = 'force-dynamic'
@@ -110,10 +113,23 @@ export default async function TimeReportsPage() {
       <div className="p-6 max-w-5xl mx-auto">
         <h1 className="text-2xl font-semibold text-gray-900 mb-4">Time reports</h1>
         <Card>
-          <div className="p-6 text-sm text-gray-600">
-            Your account isn&apos;t associated with a company yet, so there is
-            no time data to roll up. Assign yourself to a company in
-            <span className="font-medium"> Admin → Users</span> to see reports.
+          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 ring-1 ring-teal-100">
+              <Clock className="h-7 w-7 text-teal-600" />
+            </div>
+            <h2 className="text-base font-semibold text-gray-900">
+              No company assigned
+            </h2>
+            <p className="mt-2 max-w-md text-sm text-gray-600">
+              Your account isn&apos;t associated with a company yet, so there is
+              no time data to roll up. Assign yourself to a company in
+              <span className="font-medium"> Admin → Users</span> to see reports.
+            </p>
+            <Link href="/admin/users" className="mt-5 inline-block">
+              <Button variant="primary">
+                Go to Admin → Users
+              </Button>
+            </Link>
           </div>
         </Card>
       </div>

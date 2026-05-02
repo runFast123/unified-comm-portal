@@ -80,6 +80,26 @@ const moreNavItems = [
   { label: 'Users', href: '/admin/users', icon: UserCog },
 ]
 
+// Convert a URL slug ("time-reports") into a Title-Case label ("Time Reports").
+// Special-cases common acronyms that would otherwise look wrong in
+// breadcrumbs (e.g. "Api Tokens" -> "API Tokens").
+function humanize(slug: string): string {
+  return slug
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+    // Special-case acronyms
+    .replace(/\bApi\b/g, 'API')
+    .replace(/\bAi\b/g, 'AI')
+    .replace(/\bUi\b/g, 'UI')
+    .replace(/\bKb\b/g, 'KB')
+    .replace(/\bUrl\b/g, 'URL')
+    .replace(/\bId\b/g, 'ID')
+    .replace(/\bOauth\b/g, 'OAuth')
+    .replace(/\bCsat\b/g, 'CSAT')
+    .replace(/\bOoo\b/g, 'OOO')
+}
+
 function getBreadcrumbs(pathname: string) {
   const segments = pathname.split('/').filter(Boolean)
   const crumbs: { label: string; href: string }[] = []
@@ -87,7 +107,11 @@ function getBreadcrumbs(pathname: string) {
   if (segments[0] === 'admin' && segments.length > 1) {
     crumbs.push({ label: 'Admin', href: '/admin' })
     const fullPath = '/' + segments.join('/')
-    crumbs.push({ label: PAGE_TITLES[fullPath] || segments[segments.length - 1], href: fullPath })
+    const lastSegment = segments[segments.length - 1]
+    crumbs.push({
+      label: PAGE_TITLES[fullPath] || humanize(lastSegment),
+      href: fullPath,
+    })
   } else if (segments[0] === 'accounts' && segments.length > 1) {
     crumbs.push({ label: 'Accounts', href: '/accounts' })
     crumbs.push({ label: 'Account Detail', href: pathname })
@@ -96,7 +120,13 @@ function getBreadcrumbs(pathname: string) {
     crumbs.push({ label: 'Conversation', href: pathname })
   } else {
     const fullPath = '/' + segments.join('/')
-    crumbs.push({ label: PAGE_TITLES[fullPath] || segments[0] || 'Dashboard', href: fullPath })
+    const firstSegment = segments[0]
+    crumbs.push({
+      label:
+        PAGE_TITLES[fullPath] ||
+        (firstSegment ? humanize(firstSegment) : 'Dashboard'),
+      href: fullPath,
+    })
   }
 
   return crumbs
@@ -303,9 +333,6 @@ export function DashboardShell({
             <NotificationCenter />
             {/* Global Search */}
             <GlobalSearch />
-            <span className="text-xs text-muted-foreground">
-              {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-            </span>
           </div>
         </div>
 

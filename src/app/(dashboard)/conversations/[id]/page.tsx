@@ -391,7 +391,12 @@ export default async function ConversationPage({
           <ChannelIcon channel={channel} size={22} className="shrink-0" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-semibold text-gray-900 text-lg truncate max-w-[240px] sm:max-w-[360px]">{participantName}</h1>
+              <h1
+                className="font-semibold text-gray-900 text-lg line-clamp-2 break-words max-w-[240px] sm:max-w-[360px]"
+                title={participantName}
+              >
+                {participantName}
+              </h1>
               {contactProfile?.is_vip && (
                 <span
                   title="Marked as VIP in unified contact profile"
@@ -428,36 +433,53 @@ export default async function ConversationPage({
               }}
             />
           )}
-          {/* Status & priority badges */}
-          <div className="flex items-center gap-2 shrink-0">
-            <StatusDropdown
-              conversationId={id}
-              currentStatus={status}
-              secondaryStatus={(conversation as { secondary_status?: string | null }).secondary_status ?? null}
-              secondaryStatusColor={(conversation as { secondary_status_color?: string | null }).secondary_status_color ?? null}
-            />
-            <span className={cn(
-              'rounded-full px-2.5 py-1 text-xs font-medium',
-              getPriorityColor(priority)
-            )}>
-              {priority}
-            </span>
-            <SnoozeButton
-              conversationId={id}
-              snoozedUntil={(conversation as { snoozed_until?: string | null }).snoozed_until ?? null}
-            />
-            {!mergedIntoId && <MergeButton conversationId={id} />}
-            <AgentAssignment
-              conversationId={id}
-              currentAssignedTo={conversation.assigned_to || null}
-              currentAssignedName={assignedUser?.full_name || assignedUser?.email || null}
-            />
-            <CSATSendButton
-              conversationId={id}
-              csatEnabled={csatEnabled}
-              status={status}
-              hasParticipantEmail={!!conversation.participant_email}
-            />
+          {/* Status & priority badges + action group.
+              Visual dividers (h-6 w-px bg-gray-200) split the bar into three
+              functional groups: status/priority | snooze/merge | assignment/csat
+              so the header reads as separate concerns instead of one flat row.
+              The pills carry `title` tooltips so hovering reveals what each
+              represents (#4.3). */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2" title="Conversation status">
+              <StatusDropdown
+                conversationId={id}
+                currentStatus={status}
+                secondaryStatus={(conversation as { secondary_status?: string | null }).secondary_status ?? null}
+                secondaryStatusColor={(conversation as { secondary_status_color?: string | null }).secondary_status_color ?? null}
+              />
+              <span
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap',
+                  getPriorityColor(priority)
+                )}
+                title={`Priority: ${priority}`}
+                aria-label={`Priority: ${priority}`}
+              >
+                {priority}
+              </span>
+            </div>
+            <span className="h-6 w-px bg-gray-200" aria-hidden="true" />
+            <div className="flex items-center gap-2">
+              <SnoozeButton
+                conversationId={id}
+                snoozedUntil={(conversation as { snoozed_until?: string | null }).snoozed_until ?? null}
+              />
+              {!mergedIntoId && <MergeButton conversationId={id} />}
+            </div>
+            <span className="h-6 w-px bg-gray-200" aria-hidden="true" />
+            <div className="flex items-center gap-2">
+              <AgentAssignment
+                conversationId={id}
+                currentAssignedTo={conversation.assigned_to || null}
+                currentAssignedName={assignedUser?.full_name || assignedUser?.email || null}
+              />
+              <CSATSendButton
+                conversationId={id}
+                csatEnabled={csatEnabled}
+                status={status}
+                hasParticipantEmail={!!conversation.participant_email}
+              />
+            </div>
           </div>
         </div>
         {/* Timer row */}

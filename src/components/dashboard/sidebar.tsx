@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -267,6 +267,37 @@ export function Sidebar({
     }
   }, [pathname])
 
+  // ── User card popover (avatar + name => secondary actions) ─────────
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement | null>(null)
+
+  // Close user menu on outside click / Escape
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const onPointerDown = (ev: PointerEvent) => {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(ev.target as Node)
+      ) {
+        setUserMenuOpen(false)
+      }
+    }
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setUserMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [userMenuOpen])
+
+  // Close user menu when route changes
+  useEffect(() => {
+    setUserMenuOpen(false)
+  }, [pathname])
+
   const isActive = (href: string) => {
     // Strip query so `/inbox?view=bookmarks` matches as "Bookmarks" only when
     // that exact query param is present.
@@ -382,8 +413,13 @@ export function Sidebar({
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1" aria-label="Main navigation">
+        {/* Navigation — fade masks soften the top/bottom edges so list items
+            don't get sliced abruptly when scrolled past the dividers above
+            and below the nav. */}
+        <nav
+          className="relative flex-1 overflow-y-auto px-3 py-6 space-y-1 [mask-image:linear-gradient(to_bottom,transparent_0,#000_24px,#000_calc(100%-24px),transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_24px,#000_calc(100%-24px),transparent_100%)]"
+          aria-label="Main navigation"
+        >
           {sections.map((section, sIdx) => {
             if (section.visible === false) return null
             const sectionItems = section.items
@@ -523,9 +559,23 @@ export function Sidebar({
           })}
         </nav>
 
-        {/* Keyboard shortcuts hint — matches the KPICard chip style. */}
+        {/* Collapse toggle — desktop only */}
+        <div className="hidden md:flex border-t border-sidebar-border p-2">
+          <button
+            onClick={toggleCollapsed}
+            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            {!collapsed && <span>Collapse</span>}
+          </button>
+        </div>
+
+        {/* Keyboard shortcuts hint — docked at the very bottom of the
+            sidebar (above the user card) so it never overlaps menu items
+            during scroll. Hidden when the rail is collapsed. */}
         {!collapsed && (
-          <div className="flex justify-end border-t border-sidebar-border px-3 pt-2 pb-0">
+          <div className="flex justify-end border-t border-sidebar-border px-3 py-2">
             <button
               type="button"
               onClick={() => {
@@ -545,63 +595,96 @@ export function Sidebar({
           </div>
         )}
 
-        {/* Collapse toggle — desktop only */}
-        <div className="hidden md:flex border-t border-sidebar-border p-2">
-          <button
-            onClick={toggleCollapsed}
-            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            {!collapsed && <span>Collapse</span>}
-          </button>
-        </div>
-
-        {/* User Info */}
-        <div className={`border-t border-sidebar-border ${collapsed ? 'p-2' : 'p-4'}`}>
-          <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-medium text-accent-foreground shrink-0">
-              {initials}
-            </div>
-            {!collapsed && (
+        {/* User Info — compressed: avatar + name as a single row that opens
+            a small popover with secondary actions (signature, sign out).
+            On the collapsed rail we keep the avatar + sign-out form so the
+            user can still log out without expanding the sidebar. */}
+        <div
+          ref={userMenuRef}
+          className={`relative border-t border-sidebar-border ${collapsed ? 'p-2' : 'p-3'}`}
+        >
+          {!collapsed ? (
+            <button
+              type="button"
+              onClick={() => setUserMenuOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={userMenuOpen}
+              title={user.email}
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-medium text-accent-foreground shrink-0">
+                {initials}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="truncate text-sm font-medium text-sidebar-foreground">
                   {user.full_name || 'User'}
                 </p>
-                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
               </div>
-            )}
-          </div>
-          {/* Per-user signature settings — sits above Sign out so it's
-              visible without requiring admin role. Hidden on the collapsed
-              rail to keep the bottom area tidy. */}
-          {!collapsed && (
-            <Link
-              href="/account/signature"
-              onClick={onClose}
-              className={`mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                pathname === '/account/signature'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              }`}
-              title="Manage your email signature"
-            >
-              <FileText className="h-4 w-4 shrink-0" />
-              <span>My signature</span>
-            </Link>
-          )}
-          <form action={signOut}>
-            <button
-              type="submit"
-              className={`mt-2 flex w-full items-center rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors ${
-                collapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2'
-              }`}
-              title={collapsed ? 'Sign out' : undefined}
-            >
-              <LogOut className="h-4 w-4 shrink-0" />
-              {!collapsed && 'Sign out'}
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                  userMenuOpen ? 'rotate-180' : ''
+                }`}
+              />
             </button>
-          </form>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-medium text-accent-foreground shrink-0">
+                {initials}
+              </div>
+              <form action={signOut}>
+                <button
+                  type="submit"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                  title="Sign out"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="h-4 w-4 shrink-0" />
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Popover — opens upward so it doesn't get clipped by the
+              bottom of the sidebar. Click-outside + Escape close handled
+              by the userMenu effect above. */}
+          {!collapsed && userMenuOpen && (
+            <div
+              role="menu"
+              className="absolute bottom-full left-3 right-3 mb-2 overflow-hidden rounded-lg border border-sidebar-border bg-card shadow-lg"
+            >
+              <div className="border-b border-sidebar-border px-3 py-2">
+                <p className="truncate text-xs text-muted-foreground">
+                  {user.email}
+                </p>
+              </div>
+              <Link
+                href="/account/signature"
+                role="menuitem"
+                onClick={() => {
+                  setUserMenuOpen(false)
+                  onClose?.()
+                }}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                  pathname === '/account/signature'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
+              >
+                <FileText className="h-4 w-4 shrink-0" />
+                <span>My signature</span>
+              </Link>
+              <form action={signOut}>
+                <button
+                  type="submit"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <LogOut className="h-4 w-4 shrink-0" />
+                  <span>Sign out</span>
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </aside>
 

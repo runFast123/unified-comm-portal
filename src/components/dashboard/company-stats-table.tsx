@@ -244,7 +244,7 @@ export function CompanyStatsTable({ stats, companyAccountIds }: Props) {
           )}
         </div>
         {specificDate && <span className="text-xs text-teal-600 font-medium">Showing data for {specificDate}</span>}
-        {!specificDate && <span className="text-xs text-gray-400">Pick a date to filter by specific day</span>}
+        {!specificDate && <span className="text-xs text-gray-500">Specific day:</span>}
         {dateLoading && <Loader2 className="h-4 w-4 animate-spin text-teal-600" />}
       </div>
 

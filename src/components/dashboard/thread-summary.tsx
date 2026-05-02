@@ -10,6 +10,7 @@ import {
   ChevronUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 interface ThreadSummaryProps {
   conversationId: string
@@ -164,18 +165,18 @@ export function ThreadSummary({
 
       <div className="border-t border-gray-100 px-4 py-3">
         {state.kind === 'idle' && (
-          <button
+          // Use the shared Button (variant=secondary) so this reads as a
+          // proper action button rather than a section-header pill (#4.6).
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => generate(false)}
-            className={cn(
-              'inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium',
-              'bg-violet-50 text-violet-700 ring-1 ring-violet-200',
-              'transition-colors hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400'
-            )}
+            aria-label="Summarize thread"
           >
             <Sparkles className="h-3.5 w-3.5" />
             Summarize thread
-          </button>
+          </Button>
         )}
 
         {state.kind === 'loading' && (

@@ -6,7 +6,6 @@ import {
   KeyRound,
   Plus,
   AlertCircle,
-  ShieldAlert,
   Trash2,
   AlertTriangle,
   CheckCircle2,
@@ -167,8 +166,11 @@ export function ApiTokensClient({ initialTokens, knownScopes, canCreate }: Props
             <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">/api/v1/</code> endpoint.
           </p>
         </div>
-        {canCreate && (
-          <Button onClick={() => setCreateOpen(true)}>
+        {/* When the table is empty, the EmptyState below already surfaces a
+            primary "Create your first token" CTA — hide this top-right
+            duplicate so we don't have two competing primary buttons. */}
+        {canCreate && tokens.length > 0 && (
+          <Button onClick={() => setCreateOpen(true)} className="whitespace-nowrap">
             <Plus className="h-4 w-4" /> Create token
           </Button>
         )}
@@ -348,6 +350,15 @@ export function ApiTokensClient({ initialTokens, knownScopes, canCreate }: Props
           <p className="text-xs text-gray-500">
             Leave blank for a token that never expires. Revoke manually when done.
           </p>
+          {/* Shown ONCE warning surfaced at creation time, right next to the
+              fields users are filling in — not buried in the post-create
+              modal where it's easy to miss. */}
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <p className="text-sm font-medium text-amber-700">
+              The plaintext token is shown ONCE right after creation. Copy and store it immediately — we only keep a hash on our side.
+            </p>
+          </div>
         </div>
       </Modal>
 
@@ -364,16 +375,6 @@ export function ApiTokensClient({ initialTokens, knownScopes, canCreate }: Props
       >
         {plaintextModal && (
           <div className="space-y-4">
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <ShieldAlert className="mt-0.5 h-5 w-5 text-amber-700 flex-shrink-0" />
-              <div className="text-sm text-amber-800">
-                <p className="font-semibold">This is the only time you&apos;ll see this token.</p>
-                <p className="mt-1">
-                  Store it now in your password manager or secret store. We only keep a hash —
-                  if you lose it, you&apos;ll need to revoke and create a new one.
-                </p>
-              </div>
-            </div>
             <div>
               <p className="mb-2 text-sm text-gray-700">
                 Token for <strong>{plaintextModal.name}</strong>:
@@ -383,6 +384,16 @@ export function ApiTokensClient({ initialTokens, knownScopes, canCreate }: Props
                 value={plaintextModal.plaintext}
                 helpText='Use as: Authorization: Bearer ucp_…'
               />
+              {/* Warning sits directly under the token field (not above) so
+                  the user reads "shown ONCE" while the value is in front of
+                  them, before they dismiss the modal. */}
+              <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <p className="text-sm font-medium text-amber-700">
+                  This plaintext token is shown ONCE. Copy it now — we only keep a hash, so a
+                  lost token must be revoked and recreated.
+                </p>
+              </div>
             </div>
           </div>
         )}

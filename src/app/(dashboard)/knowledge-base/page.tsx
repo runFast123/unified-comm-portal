@@ -53,7 +53,10 @@ function GapCount() {
     }
     fetchGapCount()
   }, [isAdmin, companyAccountIds])
-  return <p className="text-2xl font-bold text-gray-900">{count ?? '...'}</p>
+  if (count === null) {
+    return <div className="h-7 w-12 animate-pulse rounded bg-gray-200" />
+  }
+  return <p className="text-2xl font-bold text-gray-900">{count}</p>
 }
 
 // ─── Gap Analysis Component ──────────────────────────────────────────────────
@@ -546,11 +549,58 @@ export default function KnowledgeBasePage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Badge variant={syncing ? 'warning' : 'success'} size="md">
-            <CheckCircle2 className="mr-1 h-3 w-3" />
-            {syncing ? 'Syncing...' : `Last synced ${lastSyncTime ? timeAgo(lastSyncTime) + ' ago' : 'never'}`}
-          </Badge>
-          <Button variant="secondary" size="sm" onClick={handleSyncNow} loading={syncing}>
+          {(() => {
+            // Sync freshness drives the pill semantics:
+            // - never synced -> neutral grey
+            // - synced > 24h ago -> amber (stale)
+            // - synced recently -> green
+            // While syncing -> warning (amber/yellow)
+            if (syncing) {
+              return (
+                <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 whitespace-nowrap">
+                  <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                  Syncing...
+                </span>
+              )
+            }
+            if (!lastSyncTime) {
+              return (
+                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 whitespace-nowrap">
+                  <Clock className="mr-1 h-3 w-3" />
+                  Last synced never
+                </span>
+              )
+            }
+            const ageMs = Date.now() - new Date(lastSyncTime).getTime()
+            const isStale = ageMs > 24 * 60 * 60 * 1000
+            return (
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap',
+                  isStale
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-green-200 bg-green-50 text-green-700'
+                )}
+              >
+                <CheckCircle2 className="mr-1 h-3 w-3" />
+                Last synced {timeAgo(lastSyncTime)} ago
+              </span>
+            )
+          })()}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSyncNow}
+            loading={syncing}
+            className={cn(
+              // Inverted hierarchy: when there are articles, Sync Now becomes
+              // visually stronger (still secondary, but with brand colour) so
+              // operators can rebuild the index without hunting for a button.
+              articles.length > 0
+                ? 'border-teal-200 bg-white text-teal-700 hover:bg-teal-50'
+                : undefined
+            )}
+          >
             <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
             Sync Now
           </Button>
@@ -627,17 +677,15 @@ export default function KnowledgeBasePage() {
         </div>
         {isAdmin && (
         <div className="w-full sm:w-48">
-          <select
+          <Select
+            options={[
+              { value: '', label: 'All Companies' },
+              { value: 'general', label: 'General (Shared)' },
+              ...accounts.map(acc => ({ value: acc.id, label: acc.name })),
+            ]}
             value={accountFilter}
             onChange={(e) => setAccountFilter(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-          >
-            <option value="">All Companies</option>
-            <option value="general">General (Shared)</option>
-            {accounts.map(acc => (
-              <option key={acc.id} value={acc.id}>{acc.name}</option>
-            ))}
-          </select>
+          />
         </div>
         )}
         <div className="w-full sm:w-48">

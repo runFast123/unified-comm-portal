@@ -1408,10 +1408,15 @@ export function ConversationActions({
         </div>
       )}
 
-      {/* Warning banner — only show for active/unreplied conversations */}
+      {/* Info banner — only show for active/unreplied conversations.
+         Was previously styled as `amber-50/700` (warning yellow) which
+         signalled that something is broken. This is just informational —
+         agents who reply via Gmail/Teams directly need to know they can
+         click "Mark as Replied" to sync the status. Switched to info-blue
+         per the UI audit. */}
       {isActiveConvo && (
-        <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-          <Info size={14} className="shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-800">
+          <Info size={14} className="shrink-0 mt-0.5 text-blue-600" />
           <span>
             Replied from {channel === 'teams' ? 'Teams' : channel === 'whatsapp' ? 'WhatsApp' : 'Gmail'} directly? Click <strong>&quot;Mark as Replied&quot;</strong> to sync the status here.
           </span>

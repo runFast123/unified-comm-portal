@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase-client'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,8 @@ import {
   Eye,
   EyeOff,
   Zap,
+  Info,
+  ChevronDown,
 } from 'lucide-react'
 
 const allCategories: Category[] = [
@@ -63,6 +65,10 @@ export default function AISettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saveResult, setSaveResult] = useState<'success' | 'error' | null>(null)
   const [loading, setLoading] = useState(true)
+  // Tracks whether the user has changed anything since the last successful
+  // save (or since initial load). Drives the sticky-bottom save bar so users
+  // never have to scroll back to the top to commit their edits.
+  const [dirty, setDirty] = useState(false)
 
   // AI Provider config state
   const [providerName, setProviderName] = useState('NVIDIA')
@@ -76,6 +82,37 @@ export default function AISettingsPage() {
   const [providerResult, setProviderResult] = useState<'success' | 'error' | null>(null)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
+
+  // After the initial load completes, any change to watched form state flips
+  // `dirty=true`. We use a ref + skip-first-after-load pattern so the
+  // initial hydration from supabase doesn't itself mark the form dirty.
+  const skipNextDirtyRef = useRef(true)
+  useEffect(() => {
+    if (loading) return
+    // First run after loading completes is the post-hydration tick; skip it.
+    if (skipNextDirtyRef.current) {
+      skipNextDirtyRef.current = false
+      return
+    }
+    setDirty(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    loading,
+    confidenceThreshold,
+    trustThreshold,
+    fallbackBehavior,
+    autoResolveMarketing,
+    prompts.email,
+    prompts.teams,
+    prompts.whatsapp,
+    providerName,
+    baseUrl,
+    apiKey,
+    model,
+    maxTokens,
+    temperature,
+    enabledCategories.size,
+  ])
 
   // Load accounts and AI config
   useEffect(() => {
@@ -297,6 +334,7 @@ export default function AISettingsPage() {
         setSaveResult('error')
       } else {
         setSaveResult('success')
+        setDirty(false)
         setAccounts((prev) =>
           prev.map((a) => ({
             ...a,
@@ -314,6 +352,46 @@ export default function AISettingsPage() {
       setTimeout(() => setSaveResult(null), 4000)
     }
   }, [confidenceThreshold, trustThreshold, prompts, fallbackBehavior, providerName, baseUrl, apiKey, model, maxTokens, temperature, autoResolveMarketing])
+
+  // Discard reverts in-memory state by re-pulling the persisted ai_config row.
+  // We re-set every field the load effect originally set so the form snaps
+  // back to the last-saved state without a full page reload.
+  const handleDiscard = useCallback(async () => {
+    // Tell the watched-state effect to ignore the cascade of setters below —
+    // we want the form to snap back to clean state, not re-flag as dirty.
+    skipNextDirtyRef.current = true
+    const { data: aiConfig } = await supabase
+      .from('ai_config')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (aiConfig) {
+      setProviderName(aiConfig.provider_name || 'NVIDIA')
+      setBaseUrl(aiConfig.base_url || '')
+      setApiKey(aiConfig.api_key || '')
+      setModel(aiConfig.model || '')
+      setMaxTokens(aiConfig.max_tokens || 4096)
+      setTemperature(Number(aiConfig.temperature) || 1.0)
+      setPrompts((prev) => ({
+        email: aiConfig.email_prompt || prev.email,
+        teams: aiConfig.teams_prompt || prev.teams,
+        whatsapp: aiConfig.whatsapp_prompt || prev.whatsapp,
+      }))
+      if (aiConfig.confidence_threshold) {
+        setConfidenceThreshold(Math.round(Number(aiConfig.confidence_threshold) * 100))
+      }
+      if (aiConfig.trust_threshold !== undefined && aiConfig.trust_threshold !== null) {
+        setTrustThreshold(aiConfig.trust_threshold)
+      }
+      if (aiConfig.fallback_behavior) setFallbackBehavior(aiConfig.fallback_behavior)
+      if (aiConfig.auto_resolve_marketing !== undefined && aiConfig.auto_resolve_marketing !== null) {
+        setAutoResolveMarketing(aiConfig.auto_resolve_marketing)
+      }
+    }
+    setDirty(false)
+  }, [supabase])
 
   function AIUsageCard() {
     const [usageStats, setUsageStats] = useState({ classifications: 0, replies: 0, sent: 0 })
@@ -410,13 +488,26 @@ export default function AISettingsPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Provider Name</label>
-              <Input
-                value={providerName}
-                onChange={(e) => setProviderName(e.target.value)}
-                placeholder="e.g., NVIDIA, OpenAI, Local LLM"
-                icon={<Cpu className="h-4 w-4" />}
-              />
+              <label className="mb-1 block text-sm font-medium text-gray-700">Provider</label>
+              {/* Currently only NVIDIA is wired up. Render as a readonly
+                  field styled like a disabled select (chevron, muted bg) so
+                  users see it's a single fixed value rather than something
+                  they can edit. Additional providers will become a real
+                  dropdown when they're supported. */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={providerName}
+                  readOnly
+                  aria-readonly="true"
+                  className="block w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-50 py-2 pl-10 pr-10 text-sm text-gray-700"
+                />
+                <Cpu className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Additional providers coming soon.
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Model</label>
@@ -482,13 +573,19 @@ export default function AISettingsPage() {
                   placeholder="Enter your API key"
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50"
-              >
-                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
+              {/* Eye toggle is only meaningful when there's something to mask
+                  in the first place. Hiding it on empty input avoids the
+                  "what does this do?" UX paper-cut. */}
+              {apiKey && (
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50"
+                  aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                >
+                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              )}
             </div>
           </div>
 
@@ -631,9 +728,15 @@ export default function AISettingsPage() {
                 onChange={(e) => setConfidenceThreshold(Number(e.target.value))}
                 className="w-full accent-teal-600"
               />
+              {/* Evenly-spaced ticks every 10% so the displayed value (e.g. 80%)
+                  always lines up with a label, instead of falling between the
+                  old 50/75/99 ticks. */}
               <div className="mt-1 flex justify-between text-xs text-gray-400">
                 <span>50%</span>
-                <span>75%</span>
+                <span>60%</span>
+                <span>70%</span>
+                <span>80%</span>
+                <span>90%</span>
                 <span>99%</span>
               </div>
             </div>
@@ -649,9 +752,9 @@ export default function AISettingsPage() {
             </div>
             <span className="text-sm text-gray-500">%</span>
           </div>
-          <div className="flex items-start gap-2 rounded-lg border border-yellow-200 bg-yellow-50 p-3">
-            <AlertCircle className="mt-0.5 h-4 w-4 text-yellow-600" />
-            <p className="text-sm text-yellow-700">
+          <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <Info className="mt-0.5 h-4 w-4 text-blue-600" />
+            <p className="text-sm text-blue-900">
               Messages below this threshold will be classified but marked for human review.
               Current setting: AI will handle ~{Math.round((confidenceThreshold - 50) * 2)}% of messages automatically.
             </p>
@@ -779,6 +882,24 @@ export default function AISettingsPage() {
 
       {/* AI API Usage - Live from database */}
       <AIUsageCard />
+
+      {/* Sticky save bar — only renders when there are unsaved changes. Anchors
+          to the viewport bottom so users on long forms can save without
+          scrolling back to the page header. */}
+      {dirty && (
+        <div className="sticky bottom-0 left-0 right-0 z-30 -mx-6 mt-4 flex items-center justify-between gap-3 border-t border-gray-200 bg-white px-6 py-3 shadow-lg">
+          <span className="text-sm text-gray-600">You have unsaved changes</span>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={handleDiscard} disabled={saving}>
+              Discard
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? 'Saving...' : 'Save changes'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

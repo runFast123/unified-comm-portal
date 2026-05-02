@@ -138,19 +138,27 @@ export function CategoryPieChart({ data }: { data: { name: string; value: number
     return <div className="flex items-center justify-center h-[350px] text-gray-400 text-sm">No classification data available yet. Enable Phase 1 AI to see categories.</div>
   }
 
+  // Compute totals so the legend can show counts alongside category names —
+  // more useful at a glance than a percent suffix.
+  const total = data.reduce((sum, d) => sum + d.value, 0)
+
   return (
     <ResponsiveContainer width="100%" height={350}>
       <PieChart>
         <Pie
           data={data}
-          cx="50%"
+          // Donut shifted left so the side-legend has room. Inline labels
+          // with leader lines overlapped horribly when many small slices
+          // were present (the audit caught this on a 7-category breakdown).
+          cx="40%"
           cy="50%"
           outerRadius={118}
           innerRadius={64}
           paddingAngle={2}
           dataKey="value"
-          label={({ name, percent }) => `${name} (${((percent ?? 0) * 100).toFixed(0)}%)`}
-          fontSize={11}
+          // No inline labels — the legend on the right reads more cleanly.
+          // Inline `label` + `labelLine` were producing crossing leader lines
+          // on dense breakdowns. The Tooltip on hover still surfaces values.
           stroke="#ffffff"
           strokeWidth={2}
         >
@@ -162,6 +170,20 @@ export function CategoryPieChart({ data }: { data: { name: string; value: number
           contentStyle={TOOLTIP_STYLE}
           labelStyle={TOOLTIP_LABEL_STYLE}
           itemStyle={TOOLTIP_ITEM_STYLE}
+        />
+        <Legend
+          layout="vertical"
+          align="right"
+          verticalAlign="middle"
+          iconType="circle"
+          iconSize={9}
+          wrapperStyle={{ ...LEGEND_STYLE, fontSize: 12, lineHeight: '20px', paddingLeft: 16 }}
+          formatter={(value: string) => {
+            const slice = data.find((d) => d.name === value)
+            if (!slice) return value
+            const pct = total > 0 ? ((slice.value / total) * 100).toFixed(0) : '0'
+            return `${value} · ${pct}%`
+          }}
         />
       </PieChart>
     </ResponsiveContainer>

@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CopyField } from '@/components/ui/copy-field'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/toast'
 import Link from 'next/link'
 import {
@@ -300,7 +301,7 @@ export default function HealthPage() {
           <span className="text-sm text-gray-500">
             Last refreshed: {lastRefresh ? lastRefresh.toLocaleTimeString() : 'Never'}
           </span>
-          <Button variant="secondary" onClick={refreshAll} loading={refreshing}>
+          <Button variant="secondary" onClick={refreshAll} loading={refreshing} className="whitespace-nowrap">
             <RefreshCw className="h-4 w-4" /> Refresh All
           </Button>
         </div>
@@ -332,30 +333,53 @@ export default function HealthPage() {
       )}
 
       {/* Summary strip */}
-      <div className="flex flex-wrap items-center gap-6 rounded-xl border border-gray-200 bg-white px-6 py-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <Server className="h-5 w-5 text-gray-400" />
-          <span className="text-sm font-medium text-gray-700">7 sections</span>
-        </div>
-        <div className="h-6 w-px bg-gray-200" />
-        <div className="flex items-center gap-2">
-          <CheckCircle className="h-4 w-4 text-green-500" />
-          <span className="text-sm text-gray-700">{totals.pass} passing</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-yellow-500" />
-          <span className="text-sm text-gray-700">{totals.warn} warnings</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <XCircle className="h-4 w-4 text-red-500" />
-          <span className="text-sm text-gray-700">{totals.fail} failing</span>
-        </div>
-      </div>
+      {(() => {
+        // Treat the page as "still loading" until at least one section has
+        // returned. Showing "0 passing / 0 warnings / 0 failing" before we
+        // have any data reads as "everything is broken", which is the wrong
+        // signal — render "—" instead until the first response lands.
+        const fullyLoading = !env && !oauth && !crons && !accounts && !protection
+        const display = (n: number) => (fullyLoading ? '—' : n)
+        return (
+          <div className="flex flex-wrap items-center gap-6 rounded-xl border border-gray-200 bg-white px-6 py-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Server className="h-5 w-5 text-gray-400" />
+              <span className="text-sm font-medium text-gray-700">7 sections</span>
+            </div>
+            <div className="h-6 w-px bg-gray-200" />
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span className="text-sm text-gray-700">{display(totals.pass)} passing</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-500" />
+              <span className="text-sm text-gray-700">{display(totals.warn)} warnings</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-gray-700">{display(totals.fail)} failing</span>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* A. Environment variables */}
       <Card title="A. Environment variables" description="Server-side presence checks. Values are never sent to the browser.">
         {!env ? (
-          <div className="text-sm text-gray-500">Loading…</div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Skeleton className="h-3 w-32 rounded" />
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-9 w-full rounded" />
+              ))}
+            </div>
+            <div className="space-y-1.5">
+              <Skeleton className="h-3 w-32 rounded" />
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-9 w-full rounded" />
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
@@ -399,7 +423,11 @@ export default function HealthPage() {
         description="Status of saved OAuth apps and the EXACT callback URLs to register with Google / Microsoft."
       >
         {!oauth ? (
-          <div className="text-sm text-gray-500">Loading…</div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-32 w-full rounded-lg" />
+            ))}
+          </div>
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -451,7 +479,12 @@ export default function HealthPage() {
         description="From vercel.json. Email + Teams entries also show how recently any account in that channel was polled."
       >
         {!crons ? (
-          <div className="text-sm text-gray-500">Loading…</div>
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-lg" />
+            ))}
+            <Skeleton className="h-32 w-full rounded-lg" />
+          </div>
         ) : crons.vercel_json_error ? (
           <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
             Failed to read vercel.json: {crons.vercel_json_error}
@@ -515,7 +548,11 @@ export default function HealthPage() {
         description="Last poll, consecutive failure counter, last error, and whether a channel_configs row exists."
       >
         {!accounts ? (
-          <div className="text-sm text-gray-500">Loading…</div>
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full rounded" />
+            ))}
+          </div>
         ) : accounts.length === 0 ? (
           <div className="text-sm text-gray-500">No accounts configured.</div>
         ) : (
@@ -640,7 +677,11 @@ export default function HealthPage() {
         description="Server-to-server hits /api/test-connection without auth and checks if the response is JSON or an SSO HTML wall."
       >
         {!protection ? (
-          <div className="text-sm text-gray-500">Loading…</div>
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-3/4 rounded" />
+            <Skeleton className="h-4 w-1/2 rounded" />
+            <Skeleton className="h-16 w-full rounded" />
+          </div>
         ) : (
           <div className="flex items-start gap-3">
             {protection.blocked ? (

@@ -706,7 +706,7 @@ export default function ReportsPage() {
           <button
             onClick={handleExportPdf}
             disabled={exportingPdf}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium tracking-tight text-teal-700 ring-1 ring-teal-100 transition-all hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200/80 bg-white px-3 py-1.5 text-xs font-medium tracking-tight text-gray-600 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {exportingPdf ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} strokeWidth={2} />}
             {exportingPdf ? 'Generating...' : 'Export PDF'}
@@ -738,7 +738,7 @@ export default function ReportsPage() {
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200/80">
-        <nav className="-mb-px flex gap-6 overflow-x-auto" aria-label="Report tabs">
+        <nav className="-mb-px flex gap-6 overflow-x-auto whitespace-nowrap scroll-smooth" aria-label="Report tabs">
           {tabs.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.id
@@ -747,7 +747,7 @@ export default function ReportsPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'flex items-center gap-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium tracking-tight transition-colors',
+                  'flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium tracking-tight transition-colors',
                   isActive
                     ? 'border-teal-600 text-teal-700'
                     : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'

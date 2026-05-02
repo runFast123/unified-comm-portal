@@ -82,10 +82,54 @@ function getPriorityBorderClass(priority: string): string {
     case 'high':
       return 'border-l-4 border-l-orange-500'
     case 'medium':
-      return 'border-l-4 border-l-blue-400'
+      return 'border-l-4 border-l-amber-400'
     case 'low':
     default:
       return 'border-l-4 border-l-gray-300'
+  }
+}
+
+// Human-readable label for the urgency-coded left border bar so screen readers
+// and hover tooltips can explain what the colored stripe means.
+function getPriorityBarLabel(priority: string): string {
+  switch (priority) {
+    case 'urgent':
+      return 'Urgent priority'
+    case 'high':
+      return 'High priority'
+    case 'medium':
+      return 'Medium priority'
+    case 'low':
+    default:
+      return 'Low priority'
+  }
+}
+
+// Channel chip background — colored circle behind the channel icon so the
+// channel type is conveyed at a glance even before reading the label.
+function getChannelChipClass(channel: string): string {
+  switch (channel) {
+    case 'email':
+      return 'bg-blue-100 text-blue-600 ring-1 ring-blue-200'
+    case 'teams':
+      return 'bg-purple-100 text-purple-600 ring-1 ring-purple-200'
+    case 'whatsapp':
+      return 'bg-green-100 text-green-600 ring-1 ring-green-200'
+    default:
+      return 'bg-gray-100 text-gray-500 ring-1 ring-gray-200'
+  }
+}
+
+function getChannelChipTitle(channel: string): string {
+  switch (channel) {
+    case 'email':
+      return 'Email'
+    case 'teams':
+      return 'Microsoft Teams'
+    case 'whatsapp':
+      return 'WhatsApp'
+    default:
+      return channel
   }
 }
 
@@ -102,23 +146,32 @@ function getAiStatusBadge(status: InboxItem['ai_status']) {
   }
 }
 
-function getConversationStatusBadge(status: ConversationStatus | null) {
+function getConversationStatusDot(status: ConversationStatus | null) {
   if (!status) return null
-  const config: Record<string, { label: string; dotColor: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
-    active: { label: 'Active', dotColor: 'bg-green-500', variant: 'success' },
-    in_progress: { label: 'In Progress', dotColor: 'bg-blue-500', variant: 'info' },
-    waiting_on_customer: { label: 'Waiting', dotColor: 'bg-amber-400', variant: 'warning' },
-    resolved: { label: 'Resolved', dotColor: 'bg-gray-400', variant: 'default' },
-    escalated: { label: 'Escalated', dotColor: 'bg-red-500', variant: 'danger' },
-    archived: { label: 'Archived', dotColor: 'bg-gray-300', variant: 'default' },
+  const config: Record<string, { label: string; dotColor: string; ringColor: string }> = {
+    active: { label: 'Active', dotColor: 'bg-green-500', ringColor: 'ring-green-200' },
+    in_progress: { label: 'In Progress', dotColor: 'bg-blue-500', ringColor: 'ring-blue-200' },
+    waiting_on_customer: { label: 'Waiting on customer', dotColor: 'bg-amber-400', ringColor: 'ring-amber-200' },
+    resolved: { label: 'Resolved', dotColor: 'bg-gray-400', ringColor: 'ring-gray-200' },
+    escalated: { label: 'Escalated', dotColor: 'bg-red-500', ringColor: 'ring-red-200' },
+    archived: { label: 'Archived', dotColor: 'bg-gray-300', ringColor: 'ring-gray-200' },
   }
   const c = config[status]
   if (!c) return null
+  // Compact colored dot (with a soft ring for visibility on hover) that
+  // never clips at narrow widths. Title attribute supplies the full
+  // status label on hover; aria-label keeps it screen-reader accessible.
   return (
-    <Badge variant={c.variant} size="sm">
-      <span className={cn('inline-block h-1.5 w-1.5 rounded-full mr-1', c.dotColor)} />
-      {c.label}
-    </Badge>
+    <span
+      role="img"
+      title={`Status: ${c.label}`}
+      aria-label={`Status: ${c.label}`}
+      className={cn(
+        'inline-block h-2.5 w-2.5 rounded-full whitespace-nowrap ring-2 ring-offset-1 ring-offset-white',
+        c.dotColor,
+        c.ringColor
+      )}
+    />
   )
 }
 
@@ -252,9 +305,18 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
       })
     : ''
 
+  const priorityBarLabel = getPriorityBarLabel(item.priority)
+  const channelChipClass = getChannelChipClass(item.channel)
+  const channelChipTitle = getChannelChipTitle(item.channel)
+
   return (
     <div
       onClick={handleRowClick}
+      // The colored left bar communicates priority/urgency. We surface it via
+      // `aria-label` + `title` so the meaning is discoverable rather than
+      // purely decorative.
+      aria-label={priorityBarLabel}
+      title={`${priorityBarLabel} — colored left bar reflects message priority`}
       className={cn(
         'group relative flex items-center gap-4 px-5 py-4 border-b border-gray-100 min-h-[64px]',
         'hover:bg-gray-50/80 transition-colors cursor-pointer',
@@ -273,9 +335,18 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
         />
       </div>
 
-      {/* Channel icon */}
-      <div className="flex-shrink-0">
-        <ChannelIcon channel={item.channel} size={16} />
+      {/* Channel chip — colored circle around the channel icon makes the
+          channel type instantly readable (blue=email, purple=teams,
+          green=whatsapp) rather than relying on a tiny monochrome icon. */}
+      <div
+        className={cn(
+          'flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-full',
+          channelChipClass
+        )}
+        title={channelChipTitle}
+        aria-label={`Channel: ${channelChipTitle}`}
+      >
+        <ChannelIcon channel={item.channel} size={14} className="text-current" />
       </div>
 
       {/* Sender avatar + Name + Company + Channel badge */}
@@ -350,9 +421,10 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
           </div>
         )}
 
-        {/* Status dot */}
-        <div className="hidden md:block">
-          {getConversationStatusBadge(item.conversation_status)}
+        {/* Status dot — compact colored dot, never clips. Hover/aria
+            reveal the full status label. */}
+        <div className="hidden md:flex w-4 justify-center">
+          {getConversationStatusDot(item.conversation_status)}
         </div>
 
         {/* Sentiment dot */}
@@ -369,7 +441,7 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
         </div>
 
         {/* Priority */}
-        <Badge className={cn(priorityColorClass, 'text-[10px]')} size="sm">
+        <Badge className={cn(priorityColorClass, 'text-[10px] whitespace-nowrap')} size="sm">
           {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)}
         </Badge>
 

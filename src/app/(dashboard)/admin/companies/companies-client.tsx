@@ -163,7 +163,7 @@ export function CompaniesAdminClient({ initialCompanies }: { initialCompanies: C
             hint="After creating, attach existing channels under the company detail page."
           />
         ) : (
-          <Table>
+          <Table className="min-w-0">
             <TableHeader>
               <TableRow>
                 <TableHead>Company</TableHead>
@@ -224,7 +224,7 @@ export function CompaniesAdminClient({ initialCompanies }: { initialCompanies: C
                       {c.slug ? (
                         <span className="font-mono text-xs text-gray-600">{c.slug}</span>
                       ) : (
-                        <span className="text-gray-400 italic text-xs">—</span>
+                        <span className="italic text-xs text-gray-400">Not set</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right text-sm text-gray-700">
