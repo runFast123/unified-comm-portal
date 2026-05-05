@@ -27,9 +27,22 @@ type AuditAction =
 /**
  * Writes an entry to the audit_log table.
  * Fire-and-forget — does not throw on failure.
+ *
+ * Tenant scoping: audit_log.company_id drives the SELECT RLS policy
+ * (company admins only see rows for their own tenant; super_admin sees
+ * everything). When company_id is omitted, a BEFORE-INSERT trigger
+ * (audit_log_fill_company_id_trg) derives it from users.company_id via
+ * the user_id linkage. Pass company_id explicitly when:
+ *   - The acting user is super_admin (company_id is NULL on their
+ *     profile, so without an explicit override the audit row would be
+ *     visible only to other super_admins).
+ *   - The action targets a different tenant than the actor's home one
+ *     (e.g., super_admin deleting a company user — should be visible
+ *     to that company's admins as well).
  */
 export async function logAudit(params: {
   user_id?: string | null
+  company_id?: string | null
   action: AuditAction
   entity_type?: string
   entity_id?: string
@@ -39,6 +52,7 @@ export async function logAudit(params: {
     const supabase = await createServiceRoleClient()
     await supabase.from('audit_log').insert({
       user_id: params.user_id || null,
+      company_id: params.company_id || null,
       action: params.action,
       entity_type: params.entity_type || null,
       entity_id: params.entity_id || null,

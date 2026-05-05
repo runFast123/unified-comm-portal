@@ -9,7 +9,14 @@ import { Badge } from '@/components/ui/badge'
 import { SLABadge } from '@/components/inbox/sla-badge'
 import { truncate, timeAgo, getPriorityColor, cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase-client'
+import { useUser } from '@/context/user-context'
 import type { InboxItem, ConversationStatus } from '@/types/database'
+
+// Roles that may NOT take any write action from the inbox row. Mirrors
+// the read-only carve-out in conversation-actions.tsx — keep both in
+// sync so the inbox hover-actions never tease an action whose API call
+// would 403.
+const READ_ONLY_ROLES = new Set(['viewer'])
 
 interface InboxRowProps {
   item: InboxItem
@@ -193,6 +200,8 @@ function getSentimentDot(sentiment: InboxItem['sentiment']) {
 export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: InboxRowProps) {
   const router = useRouter()
   const { toast } = useToast()
+  const { role: viewerRole } = useUser()
+  const isReadOnly = READ_ONLY_ROLES.has(viewerRole)
 
   const handleRowClick = () => {
     if (onItemClick) {
@@ -325,15 +334,17 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
         isActive && 'bg-blue-50 hover:bg-blue-50 ring-1 ring-blue-300'
       )}
     >
-      {/* Checkbox */}
-      <div onClick={handleCheckboxClick} className="flex-shrink-0">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={(e) => onSelect(item.id, e.target.checked)}
-          className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-        />
-      </div>
+      {/* Checkbox — hidden for read-only roles since bulk actions also 403. */}
+      {!isReadOnly && (
+        <div onClick={handleCheckboxClick} className="flex-shrink-0">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(e) => onSelect(item.id, e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+          />
+        </div>
+      )}
 
       {/* Channel chip — colored circle around the channel icon makes the
           channel type instantly readable (blue=email, purple=teams,
@@ -455,39 +466,43 @@ export function InboxRow({ item, selected, onSelect, onItemClick, isActive }: In
         {getAiStatusBadge(item.ai_status)}
       </div>
 
-      {/* Hover actions — positioned to the LEFT of row content to avoid overlap */}
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5 bg-white rounded-lg px-1.5 py-1 shadow-lg border border-gray-200 z-10">
-        {(item.ai_status === 'no_draft' || item.ai_status === 'classify_only') && (
+      {/* Hover actions — positioned to the LEFT of row content to avoid
+          overlap. Hidden entirely for read-only roles so we don't tease
+          buttons whose underlying API mutations would 403. */}
+      {!isReadOnly && (
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5 bg-white rounded-lg px-1.5 py-1 shadow-lg border border-gray-200 z-10">
+          {(item.ai_status === 'no_draft' || item.ai_status === 'classify_only') && (
+            <button
+              onClick={handleGenerateReply}
+              className="p-1.5 rounded-md text-teal-600 hover:bg-teal-50 transition-colors"
+              title="Generate AI reply"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
-            onClick={handleGenerateReply}
-            className="p-1.5 rounded-md text-teal-600 hover:bg-teal-50 transition-colors"
-            title="Generate AI reply"
+            onClick={handleMarkReplied}
+            className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+            title="Mark as Replied"
           >
-            <Sparkles className="h-3.5 w-3.5" />
+            <CheckCheck className="h-3.5 w-3.5" />
           </button>
-        )}
-        <button
-          onClick={handleMarkReplied}
-          className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
-          title="Mark as Replied"
-        >
-          <CheckCheck className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={handleArchive}
-          className="p-1.5 rounded-md text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
-          title="Archive"
-        >
-          <Archive className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={handleEscalate}
-          className="p-1.5 rounded-md text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition-colors"
-          title="Escalate"
-        >
-          <AlertTriangle className="h-3.5 w-3.5" />
-        </button>
-      </div>
+          <button
+            onClick={handleArchive}
+            className="p-1.5 rounded-md text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+            title="Archive"
+          >
+            <Archive className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={handleEscalate}
+            className="p-1.5 rounded-md text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+            title="Escalate"
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

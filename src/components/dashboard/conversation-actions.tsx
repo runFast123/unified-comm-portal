@@ -26,8 +26,15 @@ import { createClient } from '@/lib/supabase-client'
 import { useToast } from '@/components/ui/toast'
 import { useConversationPresence } from '@/hooks/useConversationPresence'
 import { useSmartCompose } from '@/hooks/useSmartCompose'
+import { useUser } from '@/context/user-context'
 import type { ReplyTemplate } from '@/types/database'
 import { substituteTemplate as substituteTemplateVars } from '@/lib/templates'
+
+// Roles that may NOT take any write action on a conversation. Mirrors the
+// "viewer" notion in the user_role enum — read-only seats. The active role
+// catalogue (super_admin / company_admin / company_member) all retain full
+// write privileges.
+const READ_ONLY_ROLES = new Set(['viewer'])
 
 const SMART_COMPOSE_STORAGE_KEY = 'smart-compose-enabled'
 
@@ -68,6 +75,8 @@ export function ConversationActions({
 }: ConversationActionsProps) {
   const router = useRouter()
   const { toast } = useToast()
+  const { role: viewerRole } = useUser()
+  const isReadOnly = READ_ONLY_ROLES.has(viewerRole)
   const [loading, setLoading] = useState<string | null>(null)
 
   // ── Realtime presence: who else is viewing this conversation ────────
@@ -1295,6 +1304,21 @@ export function ConversationActions({
     document.addEventListener('keydown', handleGlobalKey)
     return () => document.removeEventListener('keydown', handleGlobalKey)
   }, [handleEscalate, handleResolve, persistSmartComposeEnabled, smartComposeEnabled])
+
+  // Read-only roles see a banner instead of the action bar. Hides the
+  // composer, templates, and approve/escalate/resolve controls so the UI
+  // doesn't tease actions whose API calls would 403. All hooks above must
+  // run unconditionally — the early-return must stay below them.
+  if (isReadOnly) {
+    return (
+      <div className="sticky bottom-0 bg-white border-t border-gray-200 py-3 px-5 z-10">
+        <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          <Eye size={14} className="text-gray-400" />
+          <span>Read-only access. Contact your admin to upgrade your role to reply, escalate, or resolve.</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="sticky bottom-0 bg-white border-t border-gray-200 py-4 px-5 z-10 space-y-4">
